@@ -433,7 +433,100 @@ html, body {
     transform: scale(1.02);
 }
 
-/* Tool calls */
+/* Activity cards (tool calls) */
+.activity-card {
+    --activity-color: var(--accent);
+    margin: 8px 0 4px;
+    padding: 10px 14px;
+    background: var(--tool-bg);
+    border-radius: var(--radius-sm);
+    border-left: 3px solid var(--activity-color);
+    animation: activityIn 0.3s ease;
+}
+
+.activity-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--activity-color);
+}
+
+.activity-icon {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.activity-icon svg {
+    stroke: var(--activity-color);
+}
+
+.activity-label {
+    flex: 1;
+}
+
+.activity-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid transparent;
+    border-top-color: var(--activity-color);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+.activity-card.done .activity-spinner {
+    display: none;
+}
+
+.activity-check {
+    stroke: var(--accent);
+    flex-shrink: 0;
+    animation: checkIn 0.3s ease;
+}
+
+.activity-card.done {
+    opacity: 0.7;
+}
+
+.activity-card.done .activity-header {
+    color: var(--text-secondary);
+}
+
+.activity-card.done .activity-icon svg {
+    stroke: var(--text-secondary);
+}
+
+.activity-detail {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(255,255,255,0.06);
+    font-size: 0.78rem;
+    font-family: 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    color: var(--text-muted);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+@keyframes activityIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes checkIn {
+    from { opacity: 0; transform: scale(0.5); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* Legacy tool-call class (kept for compatibility) */
 .tool-call {
     margin: 10px 0 6px;
     padding: 10px 14px;

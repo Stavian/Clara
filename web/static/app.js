@@ -65,6 +65,10 @@ function connect() {
 
         if (data.type === 'message') {
             appendAssistantMessage(data.content);
+        } else if (data.type === 'stream') {
+            appendStreamToken(data.token);
+        } else if (data.type === 'stream_end') {
+            finalizeStream();
         } else if (data.type === 'image') {
             appendImage(data.src, data.alt);
         } else if (data.type === 'tool_call') {
@@ -112,6 +116,7 @@ function appendUserMessage(text, imagePath) {
 
 function appendAssistantMessage(text) {
     hideWelcome();
+    _markAllActivitiesDone();
     chatHistory.push({ role: 'assistant', content: text });
 
     // Check if last element is an assistant msg we can reuse (for tool calls followed by message)
@@ -142,11 +147,117 @@ function appendAssistantMessage(text) {
     updateChatList(text);
 }
 
+// Tool display config: icon SVG, labels, color
+const TOOL_META = {
+    image_generation: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>',
+        label: 'Bild generiert',
+        activeLabel: 'Generiert Bild...',
+        color: '#a78bfa',
+    },
+    web_browse: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>',
+        label: 'Web-Suche abgeschlossen',
+        activeLabel: 'Sucht im Web...',
+        color: '#38bdf8',
+    },
+    web_fetch: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
+        label: 'Seite abgerufen',
+        activeLabel: 'Ruft Webseite ab...',
+        color: '#38bdf8',
+    },
+    file_manager: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>',
+        label: 'Datei-Zugriff abgeschlossen',
+        activeLabel: 'Greift auf Datei zu...',
+        color: '#fbbf24',
+    },
+    system_command: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+        label: 'Befehl ausgefuehrt',
+        activeLabel: 'Fuehrt Befehl aus...',
+        color: '#f472b6',
+    },
+    project_manager: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>',
+        label: 'Projekt verwaltet',
+        activeLabel: 'Verwaltet Projekt...',
+        color: '#34d399',
+    },
+    task_scheduler: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>',
+        label: 'Aufgabe geplant',
+        activeLabel: 'Plant Aufgabe...',
+        color: '#fb923c',
+    },
+    memory_manager: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 16v-4M12 8h.01"/></svg>',
+        label: 'Gedaechtnis aktualisiert',
+        activeLabel: 'Zugriff auf Gedaechtnis...',
+        color: '#c084fc',
+    },
+};
+
+const _AGENT_META = {
+    coding:       { label: 'Coding-Agent fertig', activeLabel: 'Coding-Agent arbeitet...', color: '#f472b6' },
+    research:     { label: 'Recherche abgeschlossen', activeLabel: 'Research-Agent recherchiert...', color: '#38bdf8' },
+    image_prompt: { label: 'Bild-Agent fertig', activeLabel: 'Bild-Agent erstellt Prompt...', color: '#a78bfa' },
+};
+
+const _AGENT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>';
+
+const _DEFAULT_TOOL_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>';
+
+function _getToolMeta(toolName) {
+    // agent:name format
+    if (toolName.startsWith('agent:')) {
+        const agentName = toolName.split(':')[1];
+        const m = _AGENT_META[agentName] || { label: agentName, activeLabel: `${agentName} arbeitet...`, color: '#c084fc' };
+        return { icon: _AGENT_ICON, ...m };
+    }
+    // sub-agent tool format (coding:file_manager)
+    const baseName = toolName.includes(':') ? toolName.split(':')[1] : toolName;
+    return TOOL_META[baseName] || {
+        icon: _DEFAULT_TOOL_ICON,
+        label: baseName,
+        activeLabel: `${baseName}...`,
+        color: 'var(--accent)',
+    };
+}
+
+function _markActivityDone(card) {
+    if (card.classList.contains('done')) return;
+    card.classList.add('done');
+    const spinner = card.querySelector('.activity-spinner');
+    if (spinner) {
+        spinner.outerHTML = '<svg class="activity-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>';
+    }
+    const label = card.querySelector('.activity-label');
+    if (label && card.dataset.toolName) {
+        const meta = _getToolMeta(card.dataset.toolName);
+        label.textContent = meta.label;
+    }
+}
+
+function _markAllActivitiesDone() {
+    document.querySelectorAll('.activity-card:not(.done)').forEach(c => _markActivityDone(c));
+}
+
 function appendToolCall(tool, args) {
     hideWelcome();
-    const argsStr = Object.entries(args || {}).map(([k, v]) => `${k}: ${v}`).join('\n');
+    const meta = _getToolMeta(tool);
 
-    // Check if there's already an assistant message block we can attach to
+    // Build a concise detail string
+    const argsStr = Object.entries(args || {}).map(([k, v]) => {
+        const s = String(v);
+        return `${k}: ${s.length > 100 ? s.substring(0, 100) + '...' : s}`;
+    }).join('\n');
+
+    // Mark any previous still-active cards as done
+    _markAllActivitiesDone();
+
+    // Get or create assistant message block
     let lastMsg = messagesEl.lastElementChild;
     let body;
 
@@ -168,21 +279,25 @@ function appendToolCall(tool, args) {
         body = lastMsg.querySelector('.msg-body');
     }
 
-    const toolEl = document.createElement('div');
-    toolEl.className = 'tool-call';
-    toolEl.innerHTML = `
-        <div class="tool-call-header">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
-            ${escapeHtml(tool)}
+    const card = document.createElement('div');
+    card.className = 'activity-card';
+    card.dataset.toolName = tool;
+    card.style.setProperty('--activity-color', meta.color);
+    card.innerHTML = `
+        <div class="activity-header">
+            <span class="activity-icon">${meta.icon}</span>
+            <span class="activity-label">${escapeHtml(meta.activeLabel)}</span>
+            <span class="activity-spinner"></span>
         </div>
-        <div class="tool-call-body">${escapeHtml(argsStr)}</div>
+        ${argsStr ? `<div class="activity-detail">${escapeHtml(argsStr)}</div>` : ''}
     `;
-    body.appendChild(toolEl);
+    body.appendChild(card);
     scrollToBottom();
 }
 
 function appendImage(src, alt) {
     hideWelcome();
+    _markAllActivitiesDone();
 
     // Attach to existing pending assistant message or create new one
     let lastMsg = messagesEl.lastElementChild;
@@ -236,6 +351,62 @@ function showTyping() {
 function removeTyping() {
     const el = document.getElementById('typingMsg');
     if (el) el.remove();
+}
+
+// ============ Streaming ============
+
+let _streamingMsg = null;
+let _streamingText = '';
+
+function appendStreamToken(token) {
+    hideWelcome();
+    _markAllActivitiesDone();
+    _streamingText += token;
+
+    if (!_streamingMsg) {
+        // Check if there's a pending assistant message (from tool calls)
+        const lastMsg = messagesEl.lastElementChild;
+        if (lastMsg && lastMsg.dataset.pendingAssistant) {
+            _streamingMsg = lastMsg;
+            const textEl = document.createElement('div');
+            textEl.className = 'msg-text streaming-text';
+            textEl.innerHTML = renderMessage(_streamingText);
+            _streamingMsg.querySelector('.msg-body').appendChild(textEl);
+        } else {
+            _streamingMsg = document.createElement('div');
+            _streamingMsg.className = 'msg';
+            _streamingMsg.innerHTML = `
+                <div class="msg-row">
+                    <div class="msg-avatar assistant">C</div>
+                    <div class="msg-body">
+                        <div class="msg-sender assistant">Clara</div>
+                        <div class="msg-text streaming-text">${renderMessage(_streamingText)}</div>
+                    </div>
+                </div>
+            `;
+            messagesEl.appendChild(_streamingMsg);
+        }
+    } else {
+        const textEl = _streamingMsg.querySelector('.streaming-text');
+        if (textEl) {
+            textEl.innerHTML = renderMessage(_streamingText);
+        }
+    }
+    scrollToBottom();
+}
+
+function finalizeStream() {
+    if (_streamingMsg) {
+        const textEl = _streamingMsg.querySelector('.streaming-text');
+        if (textEl) {
+            textEl.classList.remove('streaming-text');
+        }
+        delete _streamingMsg.dataset.pendingAssistant;
+        chatHistory.push({ role: 'assistant', content: _streamingText });
+        updateChatList(_streamingText);
+    }
+    _streamingMsg = null;
+    _streamingText = '';
 }
 
 // ============ Actions ============

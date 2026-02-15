@@ -17,6 +17,7 @@ class Database:
         self.db = await aiosqlite.connect(str(self.db_path))
         self.db.row_factory = aiosqlite.Row
         await self._create_tables()
+        await self._create_indexes()
         logger.info(f"Database initialized at {self.db_path}")
 
     async def _create_tables(self):
@@ -62,6 +63,23 @@ class Database:
         """)
         await self.db.commit()
 
+    async def _create_indexes(self):
+        await self.db.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_conversations_session
+                ON conversations(session_id, id);
+            CREATE INDEX IF NOT EXISTS idx_memory_category
+                ON memory(category);
+            CREATE INDEX IF NOT EXISTS idx_memory_category_key
+                ON memory(category, key);
+            CREATE INDEX IF NOT EXISTS idx_tasks_project_id
+                ON tasks(project_id);
+            CREATE INDEX IF NOT EXISTS idx_tasks_status
+                ON tasks(status);
+            CREATE INDEX IF NOT EXISTS idx_projects_status
+                ON projects(status);
+        """)
+        await self.db.commit()
+
     async def close(self):
         if self.db:
             await self.db.close()
@@ -78,11 +96,14 @@ class Database:
 
     async def get_history(self, session_id: str, limit: int = 20) -> list[dict]:
         cursor = await self.db.execute(
-            "SELECT role, content FROM conversations WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+            "SELECT role, content FROM ("
+            "  SELECT role, content, id FROM conversations"
+            "  WHERE session_id = ? ORDER BY id DESC LIMIT ?"
+            ") sub ORDER BY id ASC",
             (session_id, limit),
         )
         rows = await cursor.fetchall()
-        return [{"role": row["role"], "content": row["content"]} for row in reversed(rows)]
+        return [{"role": row["role"], "content": row["content"]} for row in rows]
 
     async def clear_history(self, session_id: str):
         await self.db.execute("DELETE FROM conversations WHERE session_id = ?", (session_id,))
@@ -117,6 +138,39 @@ class Database:
     async def forget(self, category: str, key: str):
         await self.db.execute("DELETE FROM memory WHERE category = ? AND key = ?", (category, key))
         await self.db.commit()
+
+    async def search_memory(self, query: str, limit: int = 20) -> list[dict]:
+        cursor = await self.db.execute(
+            "SELECT category, key, value, timestamp FROM memory "
+            "WHERE key LIKE ? OR value LIKE ? ORDER BY timestamp DESC LIMIT ?",
+            (f"%{query}%", f"%{query}%", limit),
+        )
+        rows = await cursor.fetchall()
+        return [{"category": r["category"], "key": r["key"], "value": r["value"], "timestamp": r["timestamp"]} for r in rows]
+
+    async def get_recent_memories(self, limit: int = 20) -> list[dict]:
+        cursor = await self.db.execute(
+            "SELECT category, key, value, timestamp FROM memory ORDER BY timestamp DESC LIMIT ?",
+            (limit,),
+        )
+        rows = await cursor.fetchall()
+        return [{"category": r["category"], "key": r["key"], "value": r["value"], "timestamp": r["timestamp"]} for r in rows]
+
+    async def get_all_categories(self) -> list[str]:
+        cursor = await self.db.execute(
+            "SELECT DISTINCT category FROM memory ORDER BY category"
+        )
+        rows = await cursor.fetchall()
+        return [r["category"] for r in rows]
+
+    async def delete_category(self, category: str):
+        await self.db.execute("DELETE FROM memory WHERE category = ?", (category,))
+        await self.db.commit()
+
+    async def count_memories(self) -> int:
+        cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM memory")
+        row = await cursor.fetchone()
+        return row["cnt"] if row else 0
 
     # --- Raw execute for stores ---
 

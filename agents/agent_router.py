@@ -7,6 +7,28 @@ from skills.skill_registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
 
+_THINK_RE = re.compile(r"<think>[\s\S]*?</think>\s*", re.IGNORECASE)
+
+
+def _strip_think(text: str) -> str:
+    """Remove <think>...</think> blocks and model filler from output."""
+    text = _THINK_RE.sub("", text)
+    if "<think>" in text.lower():
+        idx = text.lower().rfind("<think>")
+        text = text[:idx]
+    # Remove pure non-Latin filler lines (CJK text the model emits)
+    lines = text.split("\n")
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            cleaned.append(line)
+            continue
+        if re.search(r"[a-zA-Z0-9äöüÄÖÜß]", stripped):
+            cleaned.append(line)
+    text = "\n".join(cleaned)
+    return text.strip()
+
 
 class AgentRouter:
     def __init__(self, ollama: OllamaClient, skills: SkillRegistry):
@@ -129,6 +151,10 @@ class AgentRouter:
                     for alt, src in img_matches:
                         events.append({"type": "image", "src": src, "alt": alt})
 
+                    # Strip image markdown so the agent LLM doesn't repeat it
+                    if img_matches:
+                        result = re.sub(r'!\[([^\]]*)\]\(\/generated\/[^)]+\)', '[Bild wurde angezeigt]', result)
+
                     messages.append({
                         "role": "assistant",
                         "content": "",
@@ -142,14 +168,14 @@ class AgentRouter:
             else:
                 break
 
-        text = response.get("content", "")
+        text = _strip_think(response.get("content", ""))
         if not text:
             messages.append({
                 "role": "user",
                 "content": "Fasse die Ergebnisse zusammen und beantworte die Aufgabe.",
             })
             response = await self.ollama.chat(messages, tools=None, model=model)
-            text = response.get("content", "")
+            text = _strip_think(response.get("content", ""))
 
         logger.info(f"Agent '{agent_name}' finished. Response length: {len(text)}")
         return text or "Der Agent konnte keine Antwort generieren.", events

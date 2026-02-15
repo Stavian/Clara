@@ -4,7 +4,7 @@
 
 | Phase | Bereich | Prioritat | Status |
 |-------|---------|-----------|--------|
-| 9 | Erweiterte Memory-Systeme | Sofort nutzlich | Offen |
+| 9 | Erweiterte Memory-Systeme | Sofort nutzlich | Fertig |
 | 10 | Multi-Channel Messaging | Sofort nutzlich | Offen |
 | 11 | Automatisierung & Skripte | Produktivitat | Teilweise |
 | 12 | Erweiterte Skills & Tools | Produktivitat | Teilweise |
@@ -20,9 +20,9 @@
 
 **Prioritat:** Sofort nutzlich
 
-- [ ] Automatische Extraktion von Fakten uber den Nutzer
-- [ ] Session-Zusammenfassung und Kontext-Priorisierung (neuere Erinnerungen starker gewichten)
-- [ ] Memory-Management Skill fur Durchsuchung und Bearbeitung von Erinnerungen
+- [x] Automatische Extraktion von Fakten uber den Nutzer (memory/fact_extractor.py)
+- [x] Session-Zusammenfassung und Kontext-Priorisierung (memory/context_builder.py, neuere Erinnerungen starker gewichtet)
+- [x] Memory-Management Skill fur Durchsuchung und Bearbeitung von Erinnerungen (skills/memory_manager.py)
 
 ---
 

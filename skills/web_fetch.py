@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import aiohttp
 from bs4 import BeautifulSoup
@@ -46,18 +47,26 @@ class WebFetchSkill(BaseSkill):
                     resp.raise_for_status()
                     html = await resp.text()
 
-            soup = BeautifulSoup(html, "lxml")
-
-            for tag in soup(["script", "style", "nav", "footer", "header"]):
-                tag.decompose()
-
-            text = soup.get_text(separator="\n", strip=True)
-
-            if len(text) > max_length:
-                text = text[:max_length] + "\n... (gekuerzt)"
+            # Run CPU-intensive HTML parsing in executor
+            loop = asyncio.get_event_loop()
+            text = await loop.run_in_executor(None, self._parse_html, html, max_length)
 
             return f"Inhalt von {url}:\n\n{text}"
 
         except Exception as e:
             logger.exception("web_fetch failed")
             return f"Fehler beim Abrufen von {url}: {e}"
+
+    @staticmethod
+    def _parse_html(html: str, max_length: int) -> str:
+        soup = BeautifulSoup(html, "lxml")
+
+        for tag in soup(["script", "style", "nav", "footer", "header"]):
+            tag.decompose()
+
+        text = soup.get_text(separator="\n", strip=True)
+
+        if len(text) > max_length:
+            text = text[:max_length] + "\n... (gekuerzt)"
+
+        return text

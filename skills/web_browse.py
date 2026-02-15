@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from duckduckgo_search import DDGS
 from skills.base_skill import BaseSkill
@@ -33,8 +34,9 @@ class WebBrowseSkill(BaseSkill):
 
     async def execute(self, query: str, max_results: int = 5, **kwargs) -> str:
         try:
-            with DDGS() as ddgs:
-                results = list(ddgs.text(query, max_results=max_results))
+            # Run synchronous DuckDuckGo search in executor to avoid blocking
+            loop = asyncio.get_event_loop()
+            results = await loop.run_in_executor(None, self._search_sync, query, max_results)
 
             if not results:
                 return f"Keine Ergebnisse fuer '{query}' gefunden."
@@ -46,3 +48,8 @@ class WebBrowseSkill(BaseSkill):
         except Exception as e:
             logger.exception("Web browse failed")
             return f"Fehler bei der Websuche: {e}"
+
+    @staticmethod
+    def _search_sync(query: str, max_results: int) -> list[dict]:
+        with DDGS() as ddgs:
+            return list(ddgs.text(query, max_results=max_results))

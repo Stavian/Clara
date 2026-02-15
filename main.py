@@ -18,6 +18,7 @@ from skills.system_command import SystemCommandSkill
 from skills.web_fetch import WebFetchSkill
 from skills.project_manager import ProjectManagerSkill
 from skills.image_generation import ImageGenerationSkill
+from skills.memory_manager import MemoryManagerSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
@@ -136,6 +137,7 @@ async def lifespan(app: FastAPI):
     Config.GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
+    skills.register(MemoryManagerSkill(db))
 
     agent_router = AgentRouter(ollama, skills)
     init_routes(ollama, db, skills, agent_router)
@@ -161,6 +163,7 @@ async def lifespan(app: FastAPI):
         logging.info("Stopping Stable Diffusion...")
         _sd_process.terminate()
     await scheduler_engine.stop()
+    await ollama.close()
     await db.close()
 
 

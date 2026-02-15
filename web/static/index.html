@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clara - KI-Assistentin</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app">
+        <header class="header">
+            <div class="header-title">
+                <h1>Clara</h1>
+                <span class="header-subtitle">Deine lokale KI-Assistentin</span>
+            </div>
+            <div class="status" id="status">
+                <span class="status-dot"></span>
+                <span class="status-text">Verbinde...</span>
+            </div>
+        </header>
+
+        <main class="chat" id="chat">
+            <div class="message assistant">
+                <div class="message-content">
+                    Hallo Marlon! Ich bin Clara, deine lokale KI-Assistentin. Wie kann ich dir helfen? 😊
+                </div>
+            </div>
+        </main>
+
+        <footer class="input-area">
+            <div class="input-wrapper">
+                <textarea
+                    id="input"
+                    placeholder="Nachricht an Clara..."
+                    rows="1"
+                    autofocus
+                ></textarea>
+                <button id="send" title="Senden">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M22 2L11 13"></path>
+                        <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                    </svg>
+                </button>
+            </div>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

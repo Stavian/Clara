@@ -11,7 +11,7 @@
 | 13 | Agent-System | Power-Feature | Teilweise |
 | 14 | Erweiterte UI | Power-Feature | Offen |
 | 15 | Sicherheit & Stabilitat | Qualitat | Teilweise |
-| 16 | Voice & Multimedia | Qualitat | Offen |
+| 16 | Voice & Multimedia | Qualitat | Teilweise |
 | 17 | Externe Integrationen | Nice-to-have | Offen |
 
 ---
@@ -116,9 +116,9 @@
 **Prioritat:** Qualitat
 
 - [ ] Spracheingabe (Speech-to-Text)
-- [ ] Sprachausgabe (TTS)
+- [x] Sprachausgabe (TTS) (edge-tts mit de-DE-KatjaNeural, Toggle-Button im UI)
 - [ ] Wake Word "Hey Clara"
-- [ ] Bild-Upload
+- [x] Bild-Upload (Bilder an Clara senden zur Analyse, Clipboard-Paste)
 - [ ] Kamera-Zugriff
 
 ---

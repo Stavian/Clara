@@ -133,6 +133,8 @@ async def lifespan(app: FastAPI):
     project_store = ProjectStore(db)
     skills.register(ProjectManagerSkill(project_store))
     Config.GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    Config.GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+    Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
 
     agent_router = AgentRouter(ollama, skills)
@@ -163,9 +165,13 @@ async def lifespan(app: FastAPI):
 
 
 Config.GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+Config.GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
+Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Clara", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.include_router(router)
+app.mount("/generated/audio", StaticFiles(directory=str(Config.GENERATED_AUDIO_DIR)), name="generated_audio")
 app.mount("/generated", StaticFiles(directory=str(Config.GENERATED_IMAGES_DIR)), name="generated")
+app.mount("/uploads", StaticFiles(directory=str(Config.UPLOAD_DIR)), name="uploads")
 app.mount("/static", StaticFiles(directory=str(Config.STATIC_DIR)), name="static")
 
 if __name__ == "__main__":

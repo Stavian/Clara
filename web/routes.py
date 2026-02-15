@@ -1,10 +1,14 @@
+import base64
 import json
 import re
 import uuid
 import logging
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from pathlib import Path
+
+from config import Config
+from services.tts_service import generate_tts
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +83,26 @@ async def index():
     return FileResponse(str(index_path))
 
 
+@router.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload an image file for Clara to analyze."""
+    allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+    if file.content_type not in allowed_types:
+        return JSONResponse(
+            status_code=400,
+            content={"error": "Nur Bilder erlaubt (PNG, JPEG, GIF, WEBP)"},
+        )
+
+    ext = file.filename.rsplit(".", 1)[-1] if "." in file.filename else "png"
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    filepath = Config.UPLOAD_DIR / filename
+
+    content = await file.read()
+    filepath.write_bytes(content)
+
+    return {"path": f"/uploads/{filename}", "filename": filename}
+
+
 @router.websocket("/api/chat")
 async def chat_websocket(ws: WebSocket):
     await ws.accept()
@@ -89,14 +113,41 @@ async def chat_websocket(ws: WebSocket):
         while True:
             data = await ws.receive_json()
             user_message = data.get("message", "").strip()
-            if not user_message:
+            tts_enabled = data.get("tts", False)
+            image_path = data.get("image", None)
+            if not user_message and not image_path:
                 continue
 
-            await _db.save_message(session_id, "user", user_message)
+            # Build user content for Ollama (with optional image)
+            if image_path:
+                # Read the uploaded image and convert to base64 for Ollama vision
+                full_path = Config.UPLOAD_DIR / Path(image_path).name
+                if full_path.exists():
+                    img_bytes = full_path.read_bytes()
+                    img_b64 = base64.b64encode(img_bytes).decode()
+                    user_content = user_message or "Was siehst du auf diesem Bild?"
+                    display_text = f"[Bild angehängt] {user_content}" if user_message else "[Bild angehängt]"
+                else:
+                    user_content = user_message
+                    display_text = user_message
+                    image_path = None
+            else:
+                user_content = user_message
+                display_text = user_message
+
+            await _db.save_message(session_id, "user", display_text)
 
             history = await _db.get_history(session_id, limit=20)
             messages = [{"role": "system", "content": SYSTEM_PROMPT}]
             messages.extend(history)
+
+            # Replace last user message with image-aware version if image attached
+            if image_path and messages:
+                messages[-1] = {
+                    "role": "user",
+                    "content": user_content,
+                    "images": [img_b64],
+                }
 
             tools = _skills.get_tool_definitions()
             if _agent_router:
@@ -206,6 +257,17 @@ async def chat_websocket(ws: WebSocket):
                 "type": "message",
                 "content": assistant_text,
             })
+
+            # Generate TTS if client has it enabled
+            if tts_enabled:
+                audio_filename = await generate_tts(
+                    assistant_text, Config.TTS_VOICE, Config.GENERATED_AUDIO_DIR
+                )
+                if audio_filename:
+                    await ws.send_json({
+                        "type": "audio",
+                        "src": f"/generated/audio/{audio_filename}",
+                    })
 
     except WebSocketDisconnect:
         logger.info(f"Session {session_id} disconnected")

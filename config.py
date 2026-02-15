@@ -22,6 +22,9 @@ class Config:
     LOG_DIR: Path = BASE_DIR / "data" / "logs"
     STATIC_DIR: Path = BASE_DIR / "web" / "static"
     GENERATED_IMAGES_DIR: Path = BASE_DIR / "data" / "generated_images"
+    GENERATED_AUDIO_DIR: Path = BASE_DIR / "data" / "generated_audio"
+    UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"
+    TTS_VOICE: str = os.getenv("TTS_VOICE", "de-DE-KatjaNeural")
 
     _raw_allowed = os.getenv("ALLOWED_DIRECTORIES", "*").strip()
     ALLOWED_DIRECTORIES: list[str] | None = (

@@ -10,10 +10,28 @@ const sidebarToggle = document.getElementById('sidebarToggle');
 const newChatBtn = document.getElementById('newChatBtn');
 const clearBtn = document.getElementById('clearBtn');
 const chatList = document.getElementById('chatList');
+const ttsToggle = document.getElementById('ttsToggle');
+const ttsIconOn = document.getElementById('ttsIconOn');
+const ttsIconOff = document.getElementById('ttsIconOff');
+const ttsAudio = document.getElementById('ttsAudio');
+const uploadBtn = document.getElementById('uploadBtn');
+const fileInput = document.getElementById('fileInput');
+const uploadPreview = document.getElementById('uploadPreview');
+const uploadThumb = document.getElementById('uploadThumb');
+const uploadRemove = document.getElementById('uploadRemove');
 
 let ws = null;
 let isConnected = false;
 let chatHistory = [];
+let ttsEnabled = localStorage.getItem('ttsEnabled') === 'true';
+let pendingUploadPath = null;
+
+// Init TTS toggle state
+function updateTtsIcon() {
+    ttsIconOn.style.display = ttsEnabled ? '' : 'none';
+    ttsIconOff.style.display = ttsEnabled ? 'none' : '';
+    ttsToggle.classList.toggle('active', ttsEnabled);
+}
 
 // ============ WebSocket ============
 
@@ -51,6 +69,8 @@ function connect() {
             appendImage(data.src, data.alt);
         } else if (data.type === 'tool_call') {
             appendToolCall(data.tool, data.args);
+        } else if (data.type === 'audio') {
+            playTtsAudio(data.src);
         } else if (data.type === 'error') {
             appendAssistantMessage(`Fehler: ${data.content}`);
         }
@@ -65,9 +85,14 @@ function hideWelcome() {
     }
 }
 
-function appendUserMessage(text) {
+function appendUserMessage(text, imagePath) {
     hideWelcome();
     chatHistory.push({ role: 'user', content: text });
+
+    let imageHtml = '';
+    if (imagePath) {
+        imageHtml = `<img class="msg-image" src="${imagePath}" alt="Hochgeladenes Bild" loading="lazy">`;
+    }
 
     const msg = document.createElement('div');
     msg.className = 'msg';
@@ -76,6 +101,7 @@ function appendUserMessage(text) {
             <div class="msg-avatar user">M</div>
             <div class="msg-body">
                 <div class="msg-sender user">Du</div>
+                ${imageHtml}
                 <div class="msg-text">${escapeHtml(text)}</div>
             </div>
         </div>
@@ -216,12 +242,23 @@ function removeTyping() {
 
 function send() {
     const text = input.value.trim();
-    if (!text || !isConnected) return;
+    if (!text && !pendingUploadPath) return;
+    if (!isConnected) return;
 
-    appendUserMessage(text);
-    ws.send(JSON.stringify({ message: text }));
+    const displayText = pendingUploadPath
+        ? (text ? `[Bild] ${text}` : '[Bild angehängt]')
+        : text;
+    appendUserMessage(displayText, pendingUploadPath);
+
+    const payload = { message: text, tts: ttsEnabled };
+    if (pendingUploadPath) {
+        payload.image = pendingUploadPath;
+    }
+    ws.send(JSON.stringify(payload));
+
     input.value = '';
     input.style.height = 'auto';
+    clearUploadPreview();
     updateSendBtn();
     showTyping();
 }
@@ -233,8 +270,8 @@ function clearChat() {
 }
 
 function updateSendBtn() {
-    const hasText = input.value.trim().length > 0;
-    sendBtn.disabled = !hasText || !isConnected;
+    const hasContent = input.value.trim().length > 0 || pendingUploadPath;
+    sendBtn.disabled = !hasContent || !isConnected;
 }
 
 function updateChatList(lastMessage) {
@@ -269,6 +306,41 @@ function scrollToBottom() {
     requestAnimationFrame(() => {
         chatArea.scrollTop = chatArea.scrollHeight;
     });
+}
+
+// ============ TTS ============
+
+function playTtsAudio(src) {
+    ttsAudio.pause();
+    ttsAudio.src = src;
+    ttsAudio.play().catch(e => console.log('Audio playback skipped:', e));
+}
+
+// ============ Image Upload ============
+
+async function uploadImage(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const resp = await fetch('/api/upload', { method: 'POST', body: formData });
+        if (!resp.ok) throw new Error('Upload fehlgeschlagen');
+        const data = await resp.json();
+        pendingUploadPath = data.path;
+
+        uploadThumb.src = data.path;
+        uploadPreview.style.display = 'flex';
+        updateSendBtn();
+    } catch (e) {
+        console.error('Upload error:', e);
+    }
+}
+
+function clearUploadPreview() {
+    pendingUploadPath = null;
+    uploadPreview.style.display = 'none';
+    uploadThumb.src = '';
+    fileInput.value = '';
 }
 
 // ============ Event Listeners ============
@@ -314,5 +386,40 @@ document.querySelectorAll('.suggestion').forEach(btn => {
     });
 });
 
+// TTS toggle
+ttsToggle.addEventListener('click', () => {
+    ttsEnabled = !ttsEnabled;
+    localStorage.setItem('ttsEnabled', ttsEnabled);
+    updateTtsIcon();
+});
+
+// Upload button
+uploadBtn.addEventListener('click', () => fileInput.click());
+
+// File input change
+fileInput.addEventListener('change', () => {
+    if (fileInput.files.length > 0) {
+        uploadImage(fileInput.files[0]);
+    }
+});
+
+// Remove uploaded image
+uploadRemove.addEventListener('click', clearUploadPreview);
+
+// Paste image from clipboard
+input.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+        if (item.type.startsWith('image/')) {
+            e.preventDefault();
+            const file = item.getAsFile();
+            if (file) uploadImage(file);
+            break;
+        }
+    }
+});
+
 // ============ Init ============
+updateTtsIcon();
 connect();

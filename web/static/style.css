@@ -543,6 +543,79 @@ textarea::placeholder {
     margin-left: 8px;
 }
 
+/* Action buttons (upload, TTS) */
+.action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background var(--transition), color var(--transition);
+    flex-shrink: 0;
+    outline: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.action-btn:hover {
+    background: var(--bg-active);
+    color: var(--text-secondary);
+}
+
+.action-btn:focus-visible {
+    box-shadow: 0 0 0 2px rgba(16, 163, 127, 0.3);
+}
+
+.action-btn.active {
+    color: var(--accent);
+}
+
+.action-btn.active:hover {
+    background: var(--bg-active);
+    color: var(--accent);
+}
+
+/* Upload preview */
+.upload-preview {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 6px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.upload-preview img {
+    width: 48px;
+    height: 48px;
+    object-fit: cover;
+    border-radius: var(--radius-xs);
+}
+
+.upload-remove {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: var(--radius-xs);
+    outline: none;
+    transition: color var(--transition), background var(--transition);
+}
+
+.upload-remove:hover {
+    color: var(--error);
+    background: rgba(239, 68, 68, 0.1);
+}
+
 .send-btn {
     width: 32px;
     height: 32px;

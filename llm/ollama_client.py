@@ -15,9 +15,10 @@ class OllamaClient:
         self,
         messages: list[dict],
         tools: list[dict] | None = None,
+        model: str | None = None,
     ) -> dict:
         payload: dict = {
-            "model": self.model,
+            "model": model or self.model,
             "messages": messages,
             "stream": False,
         }
@@ -34,9 +35,9 @@ class OllamaClient:
                 data = await resp.json()
                 return data.get("message", {})
 
-    async def generate(self, prompt: str) -> str:
+    async def generate(self, prompt: str, model: str | None = None) -> str:
         payload = {
-            "model": self.model,
+            "model": model or self.model,
             "prompt": prompt,
             "stream": False,
         }

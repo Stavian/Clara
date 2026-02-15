@@ -47,6 +47,8 @@ function connect() {
 
         if (data.type === 'message') {
             appendAssistantMessage(data.content);
+        } else if (data.type === 'image') {
+            appendImage(data.src, data.alt);
         } else if (data.type === 'tool_call') {
             appendToolCall(data.tool, data.args);
         } else if (data.type === 'error') {
@@ -150,6 +152,38 @@ function appendToolCall(tool, args) {
         <div class="tool-call-body">${escapeHtml(argsStr)}</div>
     `;
     body.appendChild(toolEl);
+    scrollToBottom();
+}
+
+function appendImage(src, alt) {
+    hideWelcome();
+
+    // Attach to existing pending assistant message or create new one
+    let lastMsg = messagesEl.lastElementChild;
+    let body;
+
+    if (lastMsg && lastMsg.dataset.pendingAssistant) {
+        body = lastMsg.querySelector('.msg-body');
+    } else {
+        lastMsg = document.createElement('div');
+        lastMsg.className = 'msg';
+        lastMsg.dataset.pendingAssistant = '1';
+        lastMsg.innerHTML = `
+            <div class="msg-row">
+                <div class="msg-avatar assistant">C</div>
+                <div class="msg-body">
+                    <div class="msg-sender assistant">Clara</div>
+                </div>
+            </div>
+        `;
+        messagesEl.appendChild(lastMsg);
+        body = lastMsg.querySelector('.msg-body');
+    }
+
+    const imgEl = document.createElement('div');
+    imgEl.className = 'msg-text';
+    imgEl.innerHTML = `<img class="msg-image" src="${src}" alt="${escapeHtml(alt)}" loading="lazy">`;
+    body.appendChild(imgEl);
     scrollToBottom();
 }
 

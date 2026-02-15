@@ -21,6 +21,7 @@ from skills.image_generation import ImageGenerationSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
+from agents.agent_router import AgentRouter
 from web.routes import router, init_routes
 
 logging.basicConfig(
@@ -81,6 +82,36 @@ async def _start_stable_diffusion():
     logging.warning("Stable Diffusion did not become ready within 5 minutes")
 
 
+async def _check_agent_models():
+    """Log which agent models are available and warn about missing ones."""
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                f"{Config.OLLAMA_BASE_URL}/api/tags",
+                timeout=aiohttp.ClientTimeout(total=5),
+            ) as resp:
+                if resp.status != 200:
+                    logging.warning("Could not check available models")
+                    return
+                data = await resp.json()
+                installed = {m["name"] for m in data.get("models", [])}
+    except Exception:
+        logging.warning("Could not connect to Ollama to check agent models")
+        return
+
+    for agent_name, cfg in Config.AGENTS.items():
+        model = cfg["model"]
+        # Ollama may list with or without :latest tag
+        found = model in installed or f"{model}:latest" in installed
+        if found:
+            logging.info(f"Agent '{agent_name}': model '{model}' OK")
+        else:
+            logging.warning(
+                f"Agent '{agent_name}': model '{model}' NOT FOUND. "
+                f"Run: ollama pull {model}"
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -104,15 +135,20 @@ async def lifespan(app: FastAPI):
     Config.GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
 
-    init_routes(ollama, db, skills)
+    agent_router = AgentRouter(ollama, skills)
+    init_routes(ollama, db, skills, agent_router)
 
     # Start scheduler
     await scheduler_engine.start()
     heartbeat = Heartbeat(scheduler_engine)
     await heartbeat.start(Config.HEARTBEAT_INTERVAL_MINUTES)
 
+    # Check agent model availability
+    await _check_agent_models()
+
     logging.info(f"Clara is running at http://{Config.HOST}:{Config.PORT}")
-    logging.info(f"Model: {Config.OLLAMA_MODEL}")
+    logging.info(f"Main model: {Config.OLLAMA_MODEL}")
+    logging.info(f"Agents: {', '.join(Config.AGENTS.keys())}")
     logging.info(f"Allowed directories: {'FULL ACCESS' if Config.ALLOWED_DIRECTORIES is None else Config.ALLOWED_DIRECTORIES}")
 
     yield

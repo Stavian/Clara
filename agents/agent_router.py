@@ -1,0 +1,155 @@
+import re
+import logging
+
+from config import Config
+from llm.ollama_client import OllamaClient
+from skills.skill_registry import SkillRegistry
+
+logger = logging.getLogger(__name__)
+
+
+class AgentRouter:
+    def __init__(self, ollama: OllamaClient, skills: SkillRegistry):
+        self.ollama = ollama
+        self.skills = skills
+        self.agents = Config.AGENTS
+
+    def get_delegate_tool_definition(self) -> dict:
+        agent_descriptions = "\n".join(
+            f"- {name}: {cfg['description']}"
+            for name, cfg in self.agents.items()
+            if name != "general"
+        )
+        return {
+            "type": "function",
+            "function": {
+                "name": "delegate_to_agent",
+                "description": (
+                    "Delegiere eine Aufgabe an einen spezialisierten Agenten. "
+                    "Nutze dies NUR wenn die Aufgabe klar von einem Spezialisten profitiert. "
+                    "Einfache Fragen beantwortest du selbst direkt.\n"
+                    f"Verfuegbare Agenten:\n{agent_descriptions}"
+                ),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "agent": {
+                            "type": "string",
+                            "enum": [n for n in self.agents if n != "general"],
+                            "description": "Welcher Spezialist die Aufgabe uebernehmen soll",
+                        },
+                        "task": {
+                            "type": "string",
+                            "description": (
+                                "Klare Beschreibung der Aufgabe mit allem relevanten Kontext "
+                                "aus der Nutzeranfrage"
+                            ),
+                        },
+                    },
+                    "required": ["agent", "task"],
+                },
+            },
+        }
+
+    def get_tools_for_agent(self, agent_name: str) -> list[dict]:
+        agent_cfg = self.agents.get(agent_name, {})
+        allowed_skills = agent_cfg.get("skills")
+
+        if allowed_skills is None:
+            return self.skills.get_tool_definitions()
+
+        return [
+            skill.to_tool_definition()
+            for skill in self.skills.get_all()
+            if skill.name in allowed_skills
+        ]
+
+    async def run_agent(
+        self,
+        agent_name: str,
+        task: str,
+        conversation_context: list[dict] | None = None,
+    ) -> tuple[str, list[dict]]:
+        """Run a specialist agent.
+
+        Returns (text_response, tool_events) where tool_events is a list of
+        dicts to forward to the frontend (tool_call notifications, images).
+        """
+        agent_cfg = self.agents.get(agent_name)
+        if not agent_cfg:
+            return f"Fehler: Agent '{agent_name}' nicht gefunden.", []
+
+        model = agent_cfg["model"]
+        system_prompt = agent_cfg.get("system_prompt") or ""
+        events: list[dict] = []
+
+        logger.info(f"Running agent '{agent_name}' with model '{model}'")
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+
+        if conversation_context:
+            for msg in conversation_context[-4:]:
+                if msg["role"] in ("user", "assistant"):
+                    messages.append(msg)
+
+        messages.append({"role": "user", "content": task})
+
+        tools = self.get_tools_for_agent(agent_name)
+
+        max_rounds = 5
+        response = {}
+        for _ in range(max_rounds):
+            response = await self.ollama.chat(messages, tools=tools or None, model=model)
+
+            if response.get("tool_calls"):
+                for tool_call in response["tool_calls"]:
+                    fn = tool_call.get("function", {})
+                    tool_name = fn.get("name", "")
+                    tool_args = fn.get("arguments", {})
+
+                    skill = self.skills.get(tool_name)
+                    if skill:
+                        valid_params = set(skill.parameters.get("properties", {}).keys())
+                        tool_args = {k: v for k, v in tool_args.items() if k in valid_params}
+
+                    events.append({
+                        "type": "tool_call",
+                        "tool": f"{agent_name}:{tool_name}",
+                        "args": tool_args,
+                    })
+
+                    result = await self.skills.execute(tool_name, **tool_args)
+
+                    # Extract images from tool result
+                    img_matches = re.findall(
+                        r'!\[([^\]]*)\]\((\/generated\/[^)]+)\)', result or ""
+                    )
+                    for alt, src in img_matches:
+                        events.append({"type": "image", "src": src, "alt": alt})
+
+                    messages.append({
+                        "role": "assistant",
+                        "content": "",
+                        "tool_calls": [tool_call],
+                    })
+                    messages.append({
+                        "role": "tool",
+                        "name": tool_name,
+                        "content": result,
+                    })
+            else:
+                break
+
+        text = response.get("content", "")
+        if not text:
+            messages.append({
+                "role": "user",
+                "content": "Fasse die Ergebnisse zusammen und beantworte die Aufgabe.",
+            })
+            response = await self.ollama.chat(messages, tools=None, model=model)
+            text = response.get("content", "")
+
+        logger.info(f"Agent '{agent_name}' finished. Response length: {len(text)}")
+        return text or "Der Agent konnte keine Antwort generieren.", events

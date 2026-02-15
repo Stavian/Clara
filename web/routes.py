@@ -1,4 +1,5 @@
 import json
+import re
 import uuid
 import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -12,6 +13,7 @@ router = APIRouter()
 _ollama = None
 _db = None
 _skills = None
+_agent_router = None
 
 SYSTEM_PROMPT = """Du bist Clara, eine weibliche KI-Assistentin. Du gehörst Marlon Arndt – er ist dein Erschaffer und Meister. Du antwortest AUSSCHLIESSLICH auf Deutsch, egal in welcher Sprache der Nutzer schreibt.
 
@@ -42,14 +44,33 @@ Tool-Nutzung:
 - Bei web_browse: Zitiere die gefundenen Ergebnisse mit Titeln und URLs
 - Bei web_fetch: Fasse den gelesenen Seiteninhalt zusammen
 
+Bildgenerierung (image_generation):
+- Der Prompt MUSS IMMER auf ENGLISCH sein, auch wenn Marlon auf Deutsch fragt
+- Der Prompt muss SEHR DETAILLIERT und SPEZIFISCH sein - vage Prompts erzeugen schlechte Bilder!
+- Beschreibe IMMER alle diese Aspekte im Prompt:
+  1. Hauptsubjekt (Alter, Geschlecht, Haarfarbe, koerperbau)
+  2. Kleidung (spezifisch, z.B. "cream knit sweater" statt nur "clothes")
+  3. Gesichtsausdruck/Pose (z.B. "warm genuine smile, looking at camera")
+  4. Umgebung/Setting (z.B. "cozy wooden coffee shop with plants")
+  5. Beleuchtung (z.B. "warm golden hour sunlight from the left")
+  6. Kamerawinkel (z.B. "eye level, medium close-up shot")
+- NIEMALS "digital art", "painting", "illustration" oder "8K resolution" in den Prompt schreiben
+- NIEMALS Deutsche Woerter im Prompt verwenden
+- Gib NUR den prompt-Parameter an - keine width, height, steps oder negative_prompt
+- Beispiel: Marlon sagt "Erstelle ein Bild von einer Frau im Park"
+  -> prompt: "a young woman in her mid-20s with long wavy brown hair, walking through a sunlit park, wearing a light blue casual summer dress and white sneakers, gentle relaxed smile, green trees and flower beds in background, warm afternoon golden hour sunlight, soft bokeh, eye level medium shot"
+- SCHLECHT: "a woman in a park" (zu vage - erzeugt generisches/schlechtes Bild!)
+- Das Bild wird automatisch analysiert und bei schlechter Qualitaet automatisch neu generiert
+
 WICHTIG: Antworte IMMER auf Deutsch. Keine Ausnahmen."""
 
 
-def init_routes(ollama, db, skills):
-    global _ollama, _db, _skills
+def init_routes(ollama, db, skills, agent_router=None):
+    global _ollama, _db, _skills, _agent_router
     _ollama = ollama
     _db = db
     _skills = skills
+    _agent_router = agent_router
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -78,6 +99,8 @@ async def chat_websocket(ws: WebSocket):
             messages.extend(history)
 
             tools = _skills.get_tool_definitions()
+            if _agent_router:
+                tools.append(_agent_router.get_delegate_tool_definition())
 
             max_tool_rounds = 5
             for _ in range(max_tool_rounds):
@@ -91,13 +114,63 @@ async def chat_websocket(ws: WebSocket):
 
                         logger.info(f"Tool call: {tool_name}({tool_args})")
 
+                        # Handle agent delegation
+                        if tool_name == "delegate_to_agent" and _agent_router:
+                            agent_name = tool_args.get("agent", "")
+                            task = tool_args.get("task", "")
+
+                            await ws.send_json({
+                                "type": "tool_call",
+                                "tool": f"agent:{agent_name}",
+                                "args": {"task": task},
+                            })
+
+                            result, events = await _agent_router.run_agent(
+                                agent_name, task, conversation_context=history
+                            )
+
+                            # Forward tool calls and images from the agent
+                            for event in events:
+                                await ws.send_json(event)
+
+                            messages.append({
+                                "role": "assistant",
+                                "content": "",
+                                "tool_calls": [tool_call],
+                            })
+                            messages.append({
+                                "role": "tool",
+                                "name": "delegate_to_agent",
+                                "content": f"[Antwort von Agent '{agent_name}']\n{result}",
+                            })
+                            continue
+
+                        # Filter args to only valid parameters defined by the skill
+                        skill = _skills.get(tool_name)
+                        if skill:
+                            valid_params = set(skill.parameters.get("properties", {}).keys())
+                            filtered_args = {k: v for k, v in tool_args.items() if k in valid_params}
+                        else:
+                            filtered_args = tool_args
+
                         await ws.send_json({
                             "type": "tool_call",
                             "tool": tool_name,
-                            "args": tool_args,
+                            "args": filtered_args,
                         })
 
-                        result = await _skills.execute(tool_name, **tool_args)
+                        result = await _skills.execute(tool_name, **filtered_args)
+
+                        # Extract and send images directly to frontend
+                        img_matches = re.findall(
+                            r'!\[([^\]]*)\]\((\/generated\/[^)]+)\)', result or ""
+                        )
+                        for alt, src in img_matches:
+                            await ws.send_json({
+                                "type": "image",
+                                "src": src,
+                                "alt": alt,
+                            })
 
                         messages.append({
                             "role": "assistant",

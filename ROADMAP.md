@@ -6,11 +6,11 @@
 |-------|---------|-----------|--------|
 | 9 | Erweiterte Memory-Systeme | Sofort nutzlich | Offen |
 | 10 | Multi-Channel Messaging | Sofort nutzlich | Offen |
-| 11 | Automatisierung & Skripte | Produktivitat | Offen |
-| 12 | Erweiterte Skills & Tools | Produktivitat | Offen |
-| 13 | Agent-System | Power-Feature | Offen |
+| 11 | Automatisierung & Skripte | Produktivitat | Teilweise |
+| 12 | Erweiterte Skills & Tools | Produktivitat | Teilweise |
+| 13 | Agent-System | Power-Feature | Teilweise |
 | 14 | Erweiterte UI | Power-Feature | Offen |
-| 15 | Sicherheit & Stabilitat | Qualitat | Offen |
+| 15 | Sicherheit & Stabilitat | Qualitat | Teilweise |
 | 16 | Voice & Multimedia | Qualitat | Offen |
 | 17 | Externe Integrationen | Nice-to-have | Offen |
 
@@ -42,8 +42,8 @@
 
 **Prioritat:** Produktivitat
 
-- [ ] Cron-Jobs
-- [ ] Heartbeat-Checks
+- [x] Cron-Jobs (TaskSchedulerSkill + SchedulerEngine)
+- [x] Heartbeat-Checks (Heartbeat-System mit konfigurierbarem Intervall)
 - [ ] Webhook-Empfanger
 - [ ] Automatische Aktionen basierend auf Ereignissen
 - [ ] Batch-Skript-Ausfuhrung
@@ -57,11 +57,11 @@
 
 - [ ] Screenshot-Skill
 - [ ] Clipboard-Skill
-- [ ] Browser-Automatisierung (Playwright/Selenium)
+- [ ] Browser-Automatisierung (Playwright/Selenium) — Basis vorhanden: WebBrowseSkill + WebFetchSkill
 - [ ] E-Mail-Integration
 - [ ] PDF-Dokumenten-Verarbeitung
-- [ ] Code-Ausfuhrung (lokal)
-- [ ] Bild-Verarbeitung (lokal)
+- [x] Code-Ausfuhrung (lokal) (SystemCommandSkill)
+- [x] Bild-Verarbeitung (lokal) (ImageGenerationSkill mit Stable Diffusion)
 - [ ] Audio-Verarbeitung (lokal)
 - [ ] Rechnerfunktionen
 - [ ] Kalender-Integration
@@ -72,9 +72,9 @@
 
 **Prioritat:** Power-Feature
 
-- [ ] Personas/Agenten fur verschiedene Aufgaben (z.B. Coding-Clara, Recherche-Clara)
-- [ ] Agent-Workspace mit individueller Konfiguration
-- [ ] Sub-Agenten fur effiziente Aufgabenverteilung
+- [x] Personas/Agenten fur verschiedene Aufgaben (general, coding, research, image_prompt)
+- [x] Agent-Workspace mit individueller Konfiguration (eigenes Modell, System-Prompt, Skills pro Agent)
+- [x] Sub-Agenten fur effiziente Aufgabenverteilung (AgentRouter mit delegate_to_agent Tool)
 - [ ] Agent-Templates
 
 ---
@@ -104,7 +104,7 @@
 - [ ] Audit-Log
 - [ ] Tool-Richtlinien
 - [ ] Automatische Backups
-- [ ] Health-Check-Endpunkt
+- [x] Health-Check-Endpunkt (/api/health mit Ollama-Status)
 - [ ] Graceful Error Recovery
 - [ ] Rate Limiting
 - [ ] Clara Doctor (Selbstdiagnose-Tool)

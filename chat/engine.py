@@ -55,6 +55,7 @@ class ChatEngine:
         image_b64: str | None = None,
         tts_enabled: bool = False,
         allowed_skills: list[str] | None = None,
+        agent_override: str | None = None,
     ) -> str:
         """Process a user message through the full LLM + tool pipeline.
 
@@ -92,6 +93,32 @@ class ChatEngine:
                 "content": user_content,
                 "images": [image_b64],
             }
+
+        # Direct agent mode: bypass normal LLM + tool loop
+        if agent_override and agent_override != "general" and self.agent_router:
+            await channel.send_tool_call(f"agent:{agent_override}", {"task": user_content})
+
+            result, events = await self.agent_router.run_agent(
+                agent_override, user_content, conversation_context=history
+            )
+
+            for event in events:
+                if event.get("type") == "tool_call":
+                    await channel.send_tool_call(event.get("tool", ""), event.get("args", {}))
+                elif event.get("type") == "image":
+                    await channel.send_image(event.get("src", ""), event.get("alt", ""))
+
+            assistant_text = result
+            await channel.send_message(assistant_text)
+            await self.db.save_message(session_id, "assistant", assistant_text)
+
+            asyncio.create_task(
+                extract_facts(self.ollama, self.db, display_text, assistant_text)
+            )
+            if tts_enabled:
+                asyncio.create_task(self._send_tts(channel, assistant_text))
+
+            return assistant_text
 
         # Build tool definitions filtered by allowed_skills
         tools = self._get_filtered_tools(allowed_skills)

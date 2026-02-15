@@ -19,7 +19,6 @@ from skills.web_fetch import WebFetchSkill
 from skills.project_manager import ProjectManagerSkill
 from skills.image_generation import ImageGenerationSkill
 from skills.memory_manager import MemoryManagerSkill
-from skills.agent_manager import AgentManagerSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
@@ -142,7 +141,6 @@ async def lifespan(app: FastAPI):
     skills.register(MemoryManagerSkill(db))
 
     agent_router = AgentRouter(ollama, skills)
-    skills.register(AgentManagerSkill(agent_router))
 
     # Create the shared chat engine
     chat_engine = ChatEngine(ollama, db, skills, agent_router, SYSTEM_PROMPT)

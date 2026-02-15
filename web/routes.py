@@ -111,6 +111,7 @@ async def chat_websocket(ws: WebSocket):
             user_message = data.get("message", "").strip()
             tts_enabled = data.get("tts", False)
             image_path = data.get("image", None)
+            agent_override = data.get("agent", None)
             if not user_message and not image_path:
                 continue
 
@@ -133,6 +134,7 @@ async def chat_websocket(ws: WebSocket):
                 image_b64=image_b64,
                 tts_enabled=tts_enabled,
                 allowed_skills=None,  # Web UI = full access
+                agent_override=agent_override,
             )
     except WebSocketDisconnect:
         logger.info(f"Session {session_id} disconnected")
@@ -142,6 +144,23 @@ async def chat_websocket(ws: WebSocket):
             await ws.send_json({"type": "error", "content": f"Fehler: {e}"})
         except Exception:
             pass
+
+
+@router.get("/api/agents")
+async def list_agents():
+    """Return available agents for the UI dropdown."""
+    if _engine and _engine.agent_router:
+        agents = []
+        for name, tpl in _engine.agent_router.agents.items():
+            if name == "general":
+                continue
+            agents.append({
+                "name": name,
+                "description": tpl.description,
+                "model": tpl.model,
+            })
+        return {"agents": agents}
+    return {"agents": []}
 
 
 @router.get("/api/health")

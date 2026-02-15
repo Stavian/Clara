@@ -25,6 +25,24 @@ def _clean_text_for_speech(text: str) -> str:
     # Remove bold/italic markers
     text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)
     text = re.sub(r'_{1,3}([^_]+)_{1,3}', r'\1', text)
+    # Remove emojis and other symbol characters
+    text = re.sub(
+        r'[\U0001F600-\U0001F64F'   # emoticons
+        r'\U0001F300-\U0001F5FF'    # misc symbols & pictographs
+        r'\U0001F680-\U0001F6FF'    # transport & map symbols
+        r'\U0001F1E0-\U0001F1FF'    # flags
+        r'\U0001F900-\U0001F9FF'    # supplemental symbols
+        r'\U0001FA00-\U0001FA6F'    # chess symbols & extended-A
+        r'\U0001FA70-\U0001FAFF'    # symbols & pictographs extended-A
+        r'\U00002702-\U000027B0'    # dingbats
+        r'\U0000FE00-\U0000FE0F'    # variation selectors
+        r'\U0000200D'               # zero width joiner
+        r'\U000023CF-\U000023F3'    # misc technical
+        r'\U0000231A-\U0000231B'    # watch/hourglass
+        r'\U00002B50'               # star
+        r'\U000025AA-\U000025FE]+', # geometric shapes
+        '', text
+    )
     # Remove excessive whitespace
     text = re.sub(r'\n{3,}', '\n\n', text)
     return text.strip()

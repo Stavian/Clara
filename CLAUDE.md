@@ -34,11 +34,11 @@ Clara is a locally-hosted AI assistant with a web UI and Discord bot. Everything
 
 Skills inherit from `BaseSkill` (name, description, parameters, execute). Registered in `SkillRegistry` at startup. Tool definitions are auto-generated in OpenAI function-calling format.
 
-Skills: `file_manager`, `system_command`, `web_browse`, `web_fetch`, `project_manager`, `task_scheduler`, `image_generation`, `memory_manager`, `agent_manager`
+Skills: `file_manager`, `system_command`, `web_browse`, `web_fetch`, `project_manager`, `task_scheduler`, `image_generation`, `memory_manager`
 
 ### Multi-Agent System
 
-Agents are defined as YAML templates in `data/agent_templates/` (builtin in `_builtin/`, user-created in `custom/`). Each agent has: name, model, system_prompt, skills, max_rounds, temperature, context_window. Custom templates override builtins with the same name. 4 builtin agents: general, coding, research, image_prompt. The main model gets a `delegate_to_agent` tool — specialists cannot delegate further. Agent routing happens in `agents/agent_router.py`. Templates are managed via the `agent_manager` skill (list, show, create, edit, clone, delete, reload).
+Agents are defined as YAML templates in `data/agent_templates/` (builtin in `_builtin/`, user-created in `custom/`). Each agent has: name, model, system_prompt, skills, max_rounds, temperature, context_window. Custom templates override builtins with the same name. 4 builtin agents: general, coding, research, image_prompt. The main model gets a `delegate_to_agent` tool — specialists cannot delegate further. Agent routing happens in `agents/agent_router.py`. Templates are managed manually as YAML files.
 
 ### Data Layer
 

@@ -25,6 +25,7 @@ let isConnected = false;
 let chatHistory = [];
 let ttsEnabled = localStorage.getItem('ttsEnabled') === 'true';
 let pendingUploadPath = null;
+let selectedAgent = null;
 
 // Init TTS toggle state
 function updateTtsIcon() {
@@ -425,6 +426,9 @@ function send() {
     if (pendingUploadPath) {
         payload.image = pendingUploadPath;
     }
+    if (selectedAgent) {
+        payload.agent = selectedAgent;
+    }
     ws.send(JSON.stringify(payload));
 
     input.value = '';
@@ -591,6 +595,87 @@ input.addEventListener('paste', (e) => {
     }
 });
 
+// ============ Agent Selector ============
+
+async function loadAgents() {
+    try {
+        const resp = await fetch('/api/agents');
+        const data = await resp.json();
+        populateAgentDropdown(data.agents);
+    } catch (e) {
+        console.error('Failed to load agents:', e);
+    }
+}
+
+function populateAgentDropdown(agents) {
+    const dropdown = document.getElementById('agentDropdown');
+    if (!dropdown) return;
+    dropdown.innerHTML = '';
+
+    // "Clara" option (normal mode)
+    const claraOpt = document.createElement('div');
+    claraOpt.className = 'agent-option active';
+    claraOpt.dataset.agent = '';
+    claraOpt.innerHTML = `
+        <div class="agent-option-radio"></div>
+        <div class="agent-option-info">
+            <div class="agent-option-name">Clara</div>
+            <div class="agent-option-desc">Normaler Modus - kann an Agenten delegieren</div>
+        </div>
+    `;
+    claraOpt.addEventListener('click', () => selectAgent(null, 'Clara', null));
+    dropdown.appendChild(claraOpt);
+
+    for (const agent of agents) {
+        const opt = document.createElement('div');
+        opt.className = 'agent-option';
+        opt.dataset.agent = agent.name;
+        opt.innerHTML = `
+            <div class="agent-option-radio"></div>
+            <div class="agent-option-info">
+                <div class="agent-option-name">${escapeHtml(agent.name)}</div>
+                <div class="agent-option-desc">${escapeHtml(agent.description)}</div>
+            </div>
+        `;
+        opt.addEventListener('click', () => selectAgent(agent.name, agent.name, agent.model));
+        dropdown.appendChild(opt);
+    }
+}
+
+function selectAgent(agentName, displayLabel, model) {
+    selectedAgent = agentName;
+    document.getElementById('agentLabel').textContent = displayLabel;
+
+    const badge = document.getElementById('modelBadge');
+    badge.textContent = model ? model.split('/').pop().split(':')[0] : 'qwen3-abliterated';
+
+    const target = agentName || '';
+    document.querySelectorAll('.agent-option').forEach(opt => {
+        opt.classList.toggle('active', opt.dataset.agent === target);
+    });
+
+    document.getElementById('agentSelector').classList.remove('open');
+
+    input.placeholder = agentName
+        ? `Nachricht an ${displayLabel}...`
+        : 'Nachricht an Clara...';
+}
+
+// Agent selector toggle
+document.getElementById('agentSelectorBtn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    document.getElementById('agentSelector').classList.toggle('open');
+});
+
+// Close dropdown on outside click
+document.addEventListener('click', (e) => {
+    const selector = document.getElementById('agentSelector');
+    if (!selector.contains(e.target)) {
+        selector.classList.remove('open');
+    }
+});
+
 // ============ Init ============
 updateTtsIcon();
 connect();
+loadAgents();

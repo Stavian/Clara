@@ -15,9 +15,13 @@ class Config:
     HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = int(os.getenv("PORT", "8080"))
 
+    SD_API_URL: str = os.getenv("SD_API_URL", "http://127.0.0.1:7860")
+    SD_FORGE_DIR: Path = Path(os.getenv("SD_FORGE_DIR", str(Path.home() / "Desktop" / "stable-diffusion-webui-forge")))
+
     DB_PATH: Path = BASE_DIR / "data" / "clara.db"
     LOG_DIR: Path = BASE_DIR / "data" / "logs"
     STATIC_DIR: Path = BASE_DIR / "web" / "static"
+    GENERATED_IMAGES_DIR: Path = BASE_DIR / "data" / "generated_images"
 
     _raw_allowed = os.getenv("ALLOWED_DIRECTORIES", "~/Documents,~/Downloads").strip()
     ALLOWED_DIRECTORIES: list[str] | None = (

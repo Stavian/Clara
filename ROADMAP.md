@@ -8,7 +8,7 @@
 | 10 | Multi-Channel Messaging | Sofort nutzlich | Offen |
 | 11 | Automatisierung & Skripte | Produktivitat | Teilweise |
 | 12 | Erweiterte Skills & Tools | Produktivitat | Teilweise |
-| 13 | Agent-System | Power-Feature | Teilweise |
+| 13 | Agent-System | Power-Feature | Fertig |
 | 14 | Erweiterte UI | Power-Feature | Offen |
 | 15 | Sicherheit & Stabilitat | Qualitat | Teilweise |
 | 16 | Voice & Multimedia | Qualitat | Teilweise |
@@ -76,7 +76,7 @@
 - [x] Personas/Agenten fur verschiedene Aufgaben (general, coding, research, image_prompt)
 - [x] Agent-Workspace mit individueller Konfiguration (eigenes Modell, System-Prompt, Skills pro Agent)
 - [x] Sub-Agenten fur effiziente Aufgabenverteilung (AgentRouter mit delegate_to_agent Tool)
-- [ ] Agent-Templates
+- [x] Agent-Templates (YAML-basiert in data/agent_templates/, AgentManagerSkill fuer CRUD)
 
 ---
 

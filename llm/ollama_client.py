@@ -28,6 +28,7 @@ class OllamaClient:
         messages: list[dict],
         tools: list[dict] | None = None,
         model: str | None = None,
+        options: dict | None = None,
     ) -> dict:
         payload: dict = {
             "model": model or self.model,
@@ -36,6 +37,8 @@ class OllamaClient:
         }
         if tools:
             payload["tools"] = tools
+        if options:
+            payload["options"] = options
 
         session = await self._get_session()
         async with session.post(

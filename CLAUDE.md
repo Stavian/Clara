@@ -26,18 +26,19 @@ Clara is a locally-hosted AI assistant with a web UI and Discord bot. Everything
 - **`discord_bot/bot.py`** — `ClaraDiscordBot`: responds to @mentions in servers, all DMs. Owner ID permission check.
 - **`discord_bot/adapter.py`** — `DiscordAdapter`: message splitting (2000 char limit), file attachments for images/audio, embeds for tool calls
 - **`llm/ollama_client.py`** — Ollama API wrapper (`chat`, `chat_stream`, `generate`, `embed`); uses a shared persistent `aiohttp.ClientSession`
-- **`config.py`** — All config via env vars + `AGENTS` dict defining multi-agent setup + Discord config
-- **`agents/agent_router.py`** — Specialist agent delegation; imports `_strip_think` from `chat.engine`
+- **`config.py`** — All config via env vars + Discord config + `AGENT_TEMPLATES_DIR` path
+- **`agents/agent_router.py`** — Specialist agent delegation; loads templates via `TemplateLoader`; imports `_strip_think` from `chat.engine`
+- **`agents/template_loader.py`** — `AgentTemplate` dataclass + `TemplateLoader` for YAML-based agent configs
 
 ### Skill System
 
 Skills inherit from `BaseSkill` (name, description, parameters, execute). Registered in `SkillRegistry` at startup. Tool definitions are auto-generated in OpenAI function-calling format.
 
-Skills: `file_manager`, `system_command`, `web_browse`, `web_fetch`, `project_manager`, `task_scheduler`, `image_generation`, `memory_manager`
+Skills: `file_manager`, `system_command`, `web_browse`, `web_fetch`, `project_manager`, `task_scheduler`, `image_generation`, `memory_manager`, `agent_manager`
 
 ### Multi-Agent System
 
-4 agents configured in `Config.AGENTS` (general, coding, research, image_prompt), each with its own Ollama model, system prompt, and skill subset. The main model gets a `delegate_to_agent` tool — specialists cannot delegate further. Agent routing happens in `agents/agent_router.py`.
+Agents are defined as YAML templates in `data/agent_templates/` (builtin in `_builtin/`, user-created in `custom/`). Each agent has: name, model, system_prompt, skills, max_rounds, temperature, context_window. Custom templates override builtins with the same name. 4 builtin agents: general, coding, research, image_prompt. The main model gets a `delegate_to_agent` tool — specialists cannot delegate further. Agent routing happens in `agents/agent_router.py`. Templates are managed via the `agent_manager` skill (list, show, create, edit, clone, delete, reload).
 
 ### Data Layer
 

@@ -19,6 +19,7 @@ from skills.web_fetch import WebFetchSkill
 from skills.project_manager import ProjectManagerSkill
 from skills.image_generation import ImageGenerationSkill
 from skills.memory_manager import MemoryManagerSkill
+from skills.agent_manager import AgentManagerSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
@@ -84,7 +85,7 @@ async def _start_stable_diffusion():
     logging.warning("Stable Diffusion did not become ready within 5 minutes")
 
 
-async def _check_agent_models():
+async def _check_agent_models(agent_router):
     """Log which agent models are available and warn about missing ones."""
     try:
         async with aiohttp.ClientSession() as session:
@@ -101,8 +102,8 @@ async def _check_agent_models():
         logging.warning("Could not connect to Ollama to check agent models")
         return
 
-    for agent_name, cfg in Config.AGENTS.items():
-        model = cfg["model"]
+    for agent_name, tpl in agent_router.agents.items():
+        model = tpl.model
         # Ollama may list with or without :latest tag
         found = model in installed or f"{model}:latest" in installed
         if found:
@@ -141,6 +142,7 @@ async def lifespan(app: FastAPI):
     skills.register(MemoryManagerSkill(db))
 
     agent_router = AgentRouter(ollama, skills)
+    skills.register(AgentManagerSkill(agent_router))
 
     # Create the shared chat engine
     chat_engine = ChatEngine(ollama, db, skills, agent_router, SYSTEM_PROMPT)
@@ -152,7 +154,7 @@ async def lifespan(app: FastAPI):
     await heartbeat.start(Config.HEARTBEAT_INTERVAL_MINUTES)
 
     # Check agent model availability
-    await _check_agent_models()
+    await _check_agent_models(agent_router)
 
     # Optionally start Discord bot
     discord_bot = None
@@ -169,7 +171,7 @@ async def lifespan(app: FastAPI):
 
     logging.info(f"Clara is running at http://{Config.HOST}:{Config.PORT}")
     logging.info(f"Main model: {Config.OLLAMA_MODEL}")
-    logging.info(f"Agents: {', '.join(Config.AGENTS.keys())}")
+    logging.info(f"Agents: {', '.join(agent_router.agents.keys())}")
     logging.info(f"Allowed directories: {'FULL ACCESS' if Config.ALLOWED_DIRECTORIES is None else Config.ALLOWED_DIRECTORIES}")
 
     yield

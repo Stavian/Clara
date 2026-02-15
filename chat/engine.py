@@ -261,17 +261,7 @@ class ChatEngine:
 
     def _get_allowed_agents(self, allowed_skills: list[str]) -> list[str]:
         """Return agent names whose skills are all within allowed_skills."""
-        allowed = []
-        for name, cfg in Config.AGENTS.items():
-            if name == "general":
-                continue
-            agent_skills = cfg.get("skills")
-            if agent_skills is None:
-                # Agent has access to all skills — not allowed for restricted users
-                continue
-            if all(s in allowed_skills for s in agent_skills):
-                allowed.append(name)
-        return allowed
+        return self.agent_router.get_allowed_agents(allowed_skills)
 
     def _is_agent_allowed(self, agent_name: str, allowed_skills: list[str] | None) -> bool:
         """Check if a specific agent is allowed given the skill restrictions."""

@@ -5,6 +5,7 @@ from config import Config
 from llm.ollama_client import OllamaClient
 from skills.skill_registry import SkillRegistry
 from chat.engine import _strip_think
+from agents.template_loader import AgentTemplate, TemplateLoader
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +14,14 @@ class AgentRouter:
     def __init__(self, ollama: OllamaClient, skills: SkillRegistry):
         self.ollama = ollama
         self.skills = skills
-        self.agents = Config.AGENTS
+        self.loader = TemplateLoader(Config.AGENT_TEMPLATES_DIR)
+        self.agents: dict[str, AgentTemplate] = self.loader.load_all()
+
+    def reload(self) -> int:
+        """Reload all agent templates from disk. Returns the agent count."""
+        self.agents = self.loader.load_all()
+        logger.info(f"Reloaded {len(self.agents)} agent templates")
+        return len(self.agents)
 
     def get_delegate_tool_definition(self, filter_agents: list[str] | None = None) -> dict:
         """Build the delegate_to_agent tool definition.
@@ -23,7 +31,7 @@ class AgentRouter:
                            If None, all non-general agents are available.
         """
         available = {
-            name: cfg for name, cfg in self.agents.items()
+            name: tpl for name, tpl in self.agents.items()
             if name != "general"
             and (filter_agents is None or name in filter_agents)
         }
@@ -32,8 +40,8 @@ class AgentRouter:
             return None
 
         agent_descriptions = "\n".join(
-            f"- {name}: {cfg['description']}"
-            for name, cfg in available.items()
+            f"- {name}: {tpl.description}"
+            for name, tpl in available.items()
         )
         return {
             "type": "function",
@@ -67,17 +75,30 @@ class AgentRouter:
         }
 
     def get_tools_for_agent(self, agent_name: str) -> list[dict]:
-        agent_cfg = self.agents.get(agent_name, {})
-        allowed_skills = agent_cfg.get("skills")
+        tpl = self.agents.get(agent_name)
+        if not tpl:
+            return self.skills.get_tool_definitions()
 
-        if allowed_skills is None:
+        if tpl.skills is None:
             return self.skills.get_tool_definitions()
 
         return [
             skill.to_tool_definition()
             for skill in self.skills.get_all()
-            if skill.name in allowed_skills
+            if skill.name in tpl.skills
         ]
+
+    def get_allowed_agents(self, allowed_skills: list[str]) -> list[str]:
+        """Return agent names whose skills are all within allowed_skills."""
+        allowed = []
+        for name, tpl in self.agents.items():
+            if name == "general":
+                continue
+            if tpl.skills is None:
+                continue
+            if all(s in allowed_skills for s in tpl.skills):
+                allowed.append(name)
+        return allowed
 
     async def run_agent(
         self,
@@ -90,12 +111,12 @@ class AgentRouter:
         Returns (text_response, tool_events) where tool_events is a list of
         dicts to forward to the frontend (tool_call notifications, images).
         """
-        agent_cfg = self.agents.get(agent_name)
-        if not agent_cfg:
+        tpl = self.agents.get(agent_name)
+        if not tpl:
             return f"Fehler: Agent '{agent_name}' nicht gefunden.", []
 
-        model = agent_cfg["model"]
-        system_prompt = agent_cfg.get("system_prompt") or ""
+        model = tpl.model
+        system_prompt = tpl.system_prompt or ""
         events: list[dict] = []
 
         logger.info(f"Running agent '{agent_name}' with model '{model}'")
@@ -105,7 +126,8 @@ class AgentRouter:
             messages.append({"role": "system", "content": system_prompt})
 
         if conversation_context:
-            for msg in conversation_context[-4:]:
+            ctx_limit = tpl.context_window
+            for msg in conversation_context[-ctx_limit:]:
                 if msg["role"] in ("user", "assistant"):
                     messages.append(msg)
 
@@ -113,10 +135,18 @@ class AgentRouter:
 
         tools = self.get_tools_for_agent(agent_name)
 
-        max_rounds = 5
+        # Build optional Ollama options
+        options = {}
+        if tpl.temperature is not None:
+            options["temperature"] = tpl.temperature
+
+        max_rounds = tpl.max_rounds
         response = {}
         for _ in range(max_rounds):
-            response = await self.ollama.chat(messages, tools=tools or None, model=model)
+            response = await self.ollama.chat(
+                messages, tools=tools or None, model=model,
+                options=options or None,
+            )
 
             if response.get("tool_calls"):
                 for tool_call in response["tool_calls"]:

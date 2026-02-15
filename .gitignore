@@ -1,5 +1,8 @@
 .env
-data/
+data/*
+!data/agent_templates/
+data/agent_templates/*
+!data/agent_templates/_builtin/
 __pycache__/
 *.pyc
 .venv/

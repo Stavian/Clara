@@ -31,9 +31,10 @@
 **Prioritat:** Sofort nutzlich
 
 - [ ] Integration von Telegram als Kommunikationskanal
-- [ ] Integration von Discord als Kommunikationskanal
+- [x] Integration von Discord als Kommunikationskanal (discord_bot/, ChannelAdapter-Abstraktion)
 - [ ] Integration von WhatsApp als Kommunikationskanal
-- [ ] Einheitliches Session-Management uber alle Kanale
+- [x] Einheitliches Session-Management uber alle Kanale (ChatEngine + ChannelAdapter in chat/)
+- [x] Berechtigungssystem: Owner vs. oeffentliche Skills per User-ID
 - [ ] Proaktive Benachrichtigungen und Kanal-Router
 
 ---

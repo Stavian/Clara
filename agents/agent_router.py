@@ -4,30 +4,9 @@ import logging
 from config import Config
 from llm.ollama_client import OllamaClient
 from skills.skill_registry import SkillRegistry
+from chat.engine import _strip_think
 
 logger = logging.getLogger(__name__)
-
-_THINK_RE = re.compile(r"<think>[\s\S]*?</think>\s*", re.IGNORECASE)
-
-
-def _strip_think(text: str) -> str:
-    """Remove <think>...</think> blocks and model filler from output."""
-    text = _THINK_RE.sub("", text)
-    if "<think>" in text.lower():
-        idx = text.lower().rfind("<think>")
-        text = text[:idx]
-    # Remove pure non-Latin filler lines (CJK text the model emits)
-    lines = text.split("\n")
-    cleaned = []
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            cleaned.append(line)
-            continue
-        if re.search(r"[a-zA-Z0-9äöüÄÖÜß]", stripped):
-            cleaned.append(line)
-    text = "\n".join(cleaned)
-    return text.strip()
 
 
 class AgentRouter:
@@ -36,11 +15,25 @@ class AgentRouter:
         self.skills = skills
         self.agents = Config.AGENTS
 
-    def get_delegate_tool_definition(self) -> dict:
+    def get_delegate_tool_definition(self, filter_agents: list[str] | None = None) -> dict:
+        """Build the delegate_to_agent tool definition.
+
+        Args:
+            filter_agents: If provided, only these agent names are offered.
+                           If None, all non-general agents are available.
+        """
+        available = {
+            name: cfg for name, cfg in self.agents.items()
+            if name != "general"
+            and (filter_agents is None or name in filter_agents)
+        }
+
+        if not available:
+            return None
+
         agent_descriptions = "\n".join(
             f"- {name}: {cfg['description']}"
-            for name, cfg in self.agents.items()
-            if name != "general"
+            for name, cfg in available.items()
         )
         return {
             "type": "function",
@@ -57,7 +50,7 @@ class AgentRouter:
                     "properties": {
                         "agent": {
                             "type": "string",
-                            "enum": [n for n in self.agents if n != "general"],
+                            "enum": list(available.keys()),
                             "description": "Welcher Spezialist die Aufgabe uebernehmen soll",
                         },
                         "task": {

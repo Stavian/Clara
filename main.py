@@ -23,7 +23,8 @@ from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
 from agents.agent_router import AgentRouter
-from web.routes import router, init_routes
+from chat.engine import ChatEngine
+from web.routes import router, init_routes, SYSTEM_PROMPT
 
 logging.basicConfig(
     level=logging.INFO,
@@ -140,7 +141,10 @@ async def lifespan(app: FastAPI):
     skills.register(MemoryManagerSkill(db))
 
     agent_router = AgentRouter(ollama, skills)
-    init_routes(ollama, db, skills, agent_router)
+
+    # Create the shared chat engine
+    chat_engine = ChatEngine(ollama, db, skills, agent_router, SYSTEM_PROMPT)
+    init_routes(chat_engine, ollama)
 
     # Start scheduler
     await scheduler_engine.start()
@@ -150,6 +154,19 @@ async def lifespan(app: FastAPI):
     # Check agent model availability
     await _check_agent_models()
 
+    # Optionally start Discord bot
+    discord_bot = None
+    if Config.DISCORD_BOT_TOKEN:
+        try:
+            from discord_bot.bot import ClaraDiscordBot
+            discord_bot = ClaraDiscordBot(Config.DISCORD_BOT_TOKEN, chat_engine)
+            asyncio.create_task(discord_bot.start())
+            logging.info("Discord bot starting...")
+        except Exception:
+            logging.exception("Failed to start Discord bot")
+    else:
+        logging.info("No DISCORD_BOT_TOKEN set, Discord bot disabled")
+
     logging.info(f"Clara is running at http://{Config.HOST}:{Config.PORT}")
     logging.info(f"Main model: {Config.OLLAMA_MODEL}")
     logging.info(f"Agents: {', '.join(Config.AGENTS.keys())}")
@@ -158,6 +175,8 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
+    if discord_bot:
+        await discord_bot.close()
     sd_task.cancel()
     if _sd_process and _sd_process.poll() is None:
         logging.info("Stopping Stable Diffusion...")

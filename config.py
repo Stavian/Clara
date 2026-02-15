@@ -37,6 +37,11 @@ class Config:
     WEB_REQUEST_TIMEOUT: int = 15
     HEARTBEAT_INTERVAL_MINUTES: int = 5
 
+    # Discord bot (optional)
+    DISCORD_BOT_TOKEN: str | None = os.getenv("DISCORD_BOT_TOKEN", None)
+    DISCORD_OWNER_ID: str | None = os.getenv("DISCORD_OWNER_ID", None)
+    DISCORD_PUBLIC_SKILLS: list[str] = ["web_browse", "web_fetch", "image_generation"]
+
     # Agent definitions — all uncensored/abliterated models
     AGENTS: dict[str, dict] = {
         "general": {

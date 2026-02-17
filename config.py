@@ -46,3 +46,8 @@ class Config:
 
     # Agent templates directory (YAML-based, replaces hardcoded AGENTS dict)
     AGENT_TEMPLATES_DIR: Path = BASE_DIR / "data" / "agent_templates"
+
+    # Google Calendar (optional)
+    GOOGLE_CREDENTIALS_PATH: Path = BASE_DIR / "data" / "credentials.json"
+    GOOGLE_TOKEN_PATH: Path = BASE_DIR / "data" / "google_token.json"
+    GOOGLE_CALENDAR_ID: str = os.getenv("GOOGLE_CALENDAR_ID", "primary")

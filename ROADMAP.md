@@ -56,16 +56,16 @@
 
 **Prioritat:** Produktivitat
 
-- [ ] Screenshot-Skill
-- [ ] Clipboard-Skill
+- [x] Screenshot-Skill (ScreenshotSkill mit mss, Full/Monitor/Region)
+- [x] Clipboard-Skill (ClipboardSkill mit pyperclip, Read/Write)
 - [ ] Browser-Automatisierung (Playwright/Selenium) — Basis vorhanden: WebBrowseSkill + WebFetchSkill
 - [ ] E-Mail-Integration
-- [ ] PDF-Dokumenten-Verarbeitung
+- [x] PDF-Dokumenten-Verarbeitung (PDFReaderSkill mit pdfplumber, Text/Tabellen/Info)
 - [x] Code-Ausfuhrung (lokal) (SystemCommandSkill)
 - [x] Bild-Verarbeitung (lokal) (ImageGenerationSkill mit Stable Diffusion)
 - [ ] Audio-Verarbeitung (lokal)
-- [ ] Rechnerfunktionen
-- [ ] Kalender-Integration
+- [x] Rechnerfunktionen (CalculatorSkill mit sicherer AST-Auswertung, Einheitenumrechnung)
+- [x] Kalender-Integration (CalendarManagerSkill mit Google Calendar API)
 
 ---
 

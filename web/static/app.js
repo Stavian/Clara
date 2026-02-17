@@ -198,6 +198,36 @@ const TOOL_META = {
         activeLabel: 'Zugriff auf Gedaechtnis...',
         color: '#c084fc',
     },
+    screenshot: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>',
+        label: 'Screenshot erstellt',
+        activeLabel: 'Erstellt Screenshot...',
+        color: '#60a5fa',
+    },
+    clipboard: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>',
+        label: 'Zwischenablage verarbeitet',
+        activeLabel: 'Zugriff auf Zwischenablage...',
+        color: '#a3e635',
+    },
+    pdf_reader: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>',
+        label: 'PDF verarbeitet',
+        activeLabel: 'Liest PDF...',
+        color: '#f87171',
+    },
+    calculator: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="10" y2="10"/><line x1="14" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="10" y2="14"/><line x1="14" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>',
+        label: 'Berechnung abgeschlossen',
+        activeLabel: 'Berechnet...',
+        color: '#2dd4bf',
+    },
+    calendar_manager: {
+        icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>',
+        label: 'Kalender aktualisiert',
+        activeLabel: 'Zugriff auf Kalender...',
+        color: '#fbbf24',
+    },
 };
 
 const _AGENT_META = {

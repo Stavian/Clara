@@ -22,6 +22,11 @@ from skills.memory_manager import MemoryManagerSkill
 from skills.webhook_manager import WebhookManagerSkill
 from skills.automation_manager import AutomationManagerSkill
 from skills.batch_script import BatchScriptSkill
+from skills.screenshot import ScreenshotSkill
+from skills.clipboard import ClipboardSkill
+from skills.pdf_reader import PDFReaderSkill
+from skills.calculator import CalculatorSkill
+from skills.calendar_manager import CalendarManagerSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
@@ -158,6 +163,13 @@ async def lifespan(app: FastAPI):
     Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
     skills.register(MemoryManagerSkill(db))
+
+    # Register Phase 12 skills
+    skills.register(ScreenshotSkill(Config.GENERATED_IMAGES_DIR))
+    skills.register(ClipboardSkill())
+    skills.register(PDFReaderSkill())
+    skills.register(CalculatorSkill())
+    skills.register(CalendarManagerSkill())
 
     # Initialize Phase 11 engines (need skills registry)
     script_engine = ScriptEngine(skills)

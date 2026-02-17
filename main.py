@@ -19,12 +19,21 @@ from skills.web_fetch import WebFetchSkill
 from skills.project_manager import ProjectManagerSkill
 from skills.image_generation import ImageGenerationSkill
 from skills.memory_manager import MemoryManagerSkill
+from skills.webhook_manager import WebhookManagerSkill
+from skills.automation_manager import AutomationManagerSkill
+from skills.batch_script import BatchScriptSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
 from agents.agent_router import AgentRouter
 from chat.engine import ChatEngine
 from web.routes import router, init_routes, SYSTEM_PROMPT
+from automation.event_bus import EventBus
+from automation.automation_engine import AutomationEngine
+from webhook.manager import WebhookManager
+from webhook.routes import webhook_router, init_webhook_routes
+from notifications.notification_service import NotificationService
+from scripts.script_engine import ScriptEngine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +46,9 @@ ollama = OllamaClient(
     model=Config.OLLAMA_MODEL,
     embedding_model=Config.OLLAMA_EMBEDDING_MODEL,
 )
-scheduler_engine = SchedulerEngine()
+event_bus = EventBus()
+notification_service = NotificationService()
+scheduler_engine = SchedulerEngine(db=db, event_bus=event_bus)
 _sd_process = None
 
 
@@ -125,7 +136,15 @@ async def lifespan(app: FastAPI):
     # Start Stable Diffusion in background
     sd_task = asyncio.create_task(_start_stable_diffusion())
 
-    # Register skills
+    # Initialize Phase 11 subsystems
+    notification_service.set_db(db)
+    await notification_service.initialize_table()
+
+    webhook_manager = WebhookManager(db, event_bus)
+    await webhook_manager.initialize()
+    init_webhook_routes(webhook_manager)
+
+    # Register core skills
     skills = SkillRegistry()
     skills.register(WebBrowseSkill())
     skills.register(FileManagerSkill(Config.ALLOWED_DIRECTORIES))
@@ -140,15 +159,48 @@ async def lifespan(app: FastAPI):
     skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
     skills.register(MemoryManagerSkill(db))
 
+    # Initialize Phase 11 engines (need skills registry)
+    script_engine = ScriptEngine(skills)
+    await script_engine.initialize()
+
+    automation_engine = AutomationEngine(db, event_bus)
+    automation_engine.skill_registry = skills
+    automation_engine.notification_service = notification_service
+    automation_engine.script_engine = script_engine
+    await automation_engine.initialize()
+
+    # Register Phase 11 skills
+    skills.register(WebhookManagerSkill(webhook_manager))
+    skills.register(AutomationManagerSkill(automation_engine, event_bus))
+    skills.register(BatchScriptSkill(script_engine))
+
+    # Wire skill_registry into scheduler
+    scheduler_engine.skill_registry = skills
+    scheduler_engine.notification_service = notification_service
+
     agent_router = AgentRouter(ollama, skills)
 
     # Create the shared chat engine
     chat_engine = ChatEngine(ollama, db, skills, agent_router, SYSTEM_PROMPT)
-    init_routes(chat_engine, ollama)
+    notification_service.set_chat_engine(chat_engine)
+    init_routes(
+        chat_engine,
+        ollama=ollama,
+        db=db,
+        event_bus=event_bus,
+        scheduler_engine=scheduler_engine,
+        sd_check_fn=_is_sd_running,
+        project_store=project_store,
+    )
 
     # Start scheduler
     await scheduler_engine.start()
-    heartbeat = Heartbeat(scheduler_engine)
+    heartbeat = Heartbeat(
+        scheduler_engine,
+        event_bus=event_bus,
+        notification_service=notification_service,
+        db=db,
+    )
     await heartbeat.start(Config.HEARTBEAT_INTERVAL_MINUTES)
 
     # Check agent model availability
@@ -160,6 +212,7 @@ async def lifespan(app: FastAPI):
         try:
             from discord_bot.bot import ClaraDiscordBot
             discord_bot = ClaraDiscordBot(Config.DISCORD_BOT_TOKEN, chat_engine)
+            notification_service.set_discord_bot(discord_bot)
             asyncio.create_task(discord_bot.start())
             logging.info("Discord bot starting...")
         except Exception:
@@ -170,6 +223,7 @@ async def lifespan(app: FastAPI):
     logging.info(f"Clara is running at http://{Config.HOST}:{Config.PORT}")
     logging.info(f"Main model: {Config.OLLAMA_MODEL}")
     logging.info(f"Agents: {', '.join(agent_router.agents.keys())}")
+    logging.info(f"Skills: {', '.join(s.name for s in skills.get_all())}")
     logging.info(f"Allowed directories: {'FULL ACCESS' if Config.ALLOWED_DIRECTORIES is None else Config.ALLOWED_DIRECTORIES}")
 
     yield
@@ -177,6 +231,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if discord_bot:
         await discord_bot.close()
+    await heartbeat.stop()
     sd_task.cancel()
     if _sd_process and _sd_process.poll() is None:
         logging.info("Stopping Stable Diffusion...")
@@ -191,6 +246,7 @@ Config.GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Clara", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.include_router(router)
+app.include_router(webhook_router)
 app.mount("/generated/audio", StaticFiles(directory=str(Config.GENERATED_AUDIO_DIR)), name="generated_audio")
 app.mount("/generated", StaticFiles(directory=str(Config.GENERATED_IMAGES_DIR)), name="generated")
 app.mount("/uploads", StaticFiles(directory=str(Config.UPLOAD_DIR)), name="uploads")

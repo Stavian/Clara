@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clara</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=14">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
@@ -21,6 +21,27 @@
             <div class="sidebar-chats" id="chatList">
                 <div class="chat-list-label">Heute</div>
             </div>
+
+            <!-- Navigation -->
+            <nav class="sidebar-nav" id="sidebarNav">
+                <a class="nav-item active" data-view="chat">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    <span>Chat</span>
+                </a>
+                <a class="nav-item" data-view="dashboard">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span>Dashboard</span>
+                </a>
+                <a class="nav-item" data-view="projekte">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+                    <span>Projekte</span>
+                </a>
+                <a class="nav-item" data-view="settings">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                    <span>Einstellungen</span>
+                </a>
+            </nav>
+
             <div class="sidebar-footer">
                 <div class="sidebar-user">
                     <div class="user-avatar">M</div>
@@ -41,7 +62,7 @@
                 <button class="sidebar-toggle" id="sidebarToggle">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
                 </button>
-                <div class="topbar-title">Clara</div>
+                <div class="topbar-title" id="topbarTitle">Clara</div>
                 <div class="topbar-actions">
                     <button class="icon-btn" id="clearBtn" title="Chat leeren">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
@@ -49,74 +70,165 @@
                 </div>
             </div>
 
-            <!-- Chat area -->
-            <div class="chat-area" id="chatArea">
-                <!-- Welcome screen -->
-                <div class="welcome" id="welcome">
-                    <div class="welcome-icon">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
-                            <line x1="9" y1="9" x2="9.01" y2="9"/>
-                            <line x1="15" y1="9" x2="15.01" y2="9"/>
-                        </svg>
-                    </div>
-                    <h1>Hallo Marlon</h1>
-                    <p>Wie kann ich dir heute helfen?</p>
-                    <div class="suggestions">
-                        <button class="suggestion" data-msg="Was kannst du alles?">Was kannst du alles?</button>
-                        <button class="suggestion" data-msg="Zeige mir meine Dateien auf dem Desktop">Dateien auf dem Desktop</button>
-                        <button class="suggestion" data-msg="Suche im Internet nach den neuesten Tech-News">Tech-News suchen</button>
-                        <button class="suggestion" data-msg="Erstelle ein neues Projekt">Neues Projekt erstellen</button>
-                    </div>
-                </div>
-
-                <!-- Messages container -->
-                <div class="messages" id="messages"></div>
-            </div>
-
-            <!-- Input area -->
-            <div class="input-area">
-                <div class="input-container">
-                    <div class="agent-selector" id="agentSelector">
-                        <button class="agent-selector-btn" id="agentSelectorBtn" type="button">
-                            <span class="agent-selector-label" id="agentLabel">Clara</span>
-                            <svg class="agent-selector-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        </button>
-                        <div class="agent-dropdown" id="agentDropdown"></div>
-                    </div>
-                    <div class="upload-preview" id="uploadPreview" style="display:none;">
-                        <img id="uploadThumb" alt="Vorschau">
-                        <button class="upload-remove" id="uploadRemove" title="Bild entfernen">&times;</button>
-                    </div>
-                    <div class="input-wrapper" id="inputWrapper">
-                        <textarea
-                            id="input"
-                            placeholder="Nachricht an Clara..."
-                            rows="1"
-                            autofocus
-                        ></textarea>
-                        <input type="file" id="fileInput" accept="image/*" style="display:none;">
-                        <div class="input-actions">
-                            <button class="action-btn" id="uploadBtn" title="Bild hochladen">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-                            </button>
-                            <button class="action-btn" id="ttsToggle" title="Sprachausgabe ein/aus">
-                                <svg id="ttsIconOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
-                                <svg id="ttsIconOn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
-                            </button>
-                            <button class="send-btn" id="sendBtn" disabled title="Senden (Enter)">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
-                            </button>
+            <!-- VIEW: Chat -->
+            <div class="view" id="viewChat">
+                <!-- Chat area -->
+                <div class="chat-area" id="chatArea">
+                    <!-- Welcome screen -->
+                    <div class="welcome" id="welcome">
+                        <div class="welcome-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M8 14s1.5 2 4 2 4-2 4-2"/>
+                                <line x1="9" y1="9" x2="9.01" y2="9"/>
+                                <line x1="15" y1="9" x2="15.01" y2="9"/>
+                            </svg>
+                        </div>
+                        <h1>Hallo Marlon</h1>
+                        <p>Wie kann ich dir heute helfen?</p>
+                        <div class="suggestions">
+                            <button class="suggestion" data-msg="Was kannst du alles?">Was kannst du alles?</button>
+                            <button class="suggestion" data-msg="Zeige mir meine Dateien auf dem Desktop">Dateien auf dem Desktop</button>
+                            <button class="suggestion" data-msg="Suche im Internet nach den neuesten Tech-News">Tech-News suchen</button>
+                            <button class="suggestion" data-msg="Erstelle ein neues Projekt">Neues Projekt erstellen</button>
                         </div>
                     </div>
-                    <div class="input-hint">Clara kann Fehler machen. Alle Daten bleiben lokal auf deinem Rechner.</div>
+
+                    <!-- Messages container -->
+                    <div class="messages" id="messages"></div>
+                </div>
+
+                <!-- Input area -->
+                <div class="input-area">
+                    <div class="input-container">
+                        <div class="agent-selector" id="agentSelector">
+                            <button class="agent-selector-btn" id="agentSelectorBtn" type="button">
+                                <span class="agent-selector-label" id="agentLabel">Clara</span>
+                                <svg class="agent-selector-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                            </button>
+                            <div class="agent-dropdown" id="agentDropdown"></div>
+                        </div>
+                        <div class="upload-preview" id="uploadPreview" style="display:none;">
+                            <img id="uploadThumb" alt="Vorschau">
+                            <button class="upload-remove" id="uploadRemove" title="Bild entfernen">&times;</button>
+                        </div>
+                        <div class="input-wrapper" id="inputWrapper">
+                            <textarea
+                                id="input"
+                                placeholder="Nachricht an Clara..."
+                                rows="1"
+                                autofocus
+                            ></textarea>
+                            <input type="file" id="fileInput" accept="image/*" style="display:none;">
+                            <div class="input-actions">
+                                <button class="action-btn" id="uploadBtn" title="Bild hochladen">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
+                                </button>
+                                <button class="action-btn" id="ttsToggle" title="Sprachausgabe ein/aus">
+                                    <svg id="ttsIconOff" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>
+                                    <svg id="ttsIconOn" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="display:none;"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14"/><path d="M15.54 8.46a5 5 0 010 7.07"/></svg>
+                                </button>
+                                <button class="send-btn" id="sendBtn" disabled title="Senden (Enter)">
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M22 2L11 13"/><path d="M22 2L15 22L11 13L2 9L22 2Z"/></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="input-hint">Clara kann Fehler machen. Alle Daten bleiben lokal auf deinem Rechner.</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Dashboard -->
+            <div class="view hidden" id="viewDashboard">
+                <div class="dashboard-scroll">
+                    <div class="dashboard">
+                        <h2 class="dashboard-title">Dashboard</h2>
+                        <div class="dash-section">
+                            <h3 class="dash-section-title">Systemstatus</h3>
+                            <div class="status-cards" id="statusCards"></div>
+                        </div>
+                        <div class="dash-section">
+                            <h3 class="dash-section-title">Statistiken</h3>
+                            <div class="stats-grid" id="statsGrid"></div>
+                        </div>
+                        <div class="dash-section">
+                            <h3 class="dash-section-title">Speicherverbrauch</h3>
+                            <div id="storageDisplay"></div>
+                        </div>
+                        <div class="dash-section">
+                            <h3 class="dash-section-title">Letzte Aktivitaet</h3>
+                            <div id="activityList"></div>
+                        </div>
+                        <div class="dash-row">
+                            <div class="dash-section">
+                                <h3 class="dash-section-title">Skills</h3>
+                                <div id="skillList"></div>
+                            </div>
+                            <div class="dash-section">
+                                <h3 class="dash-section-title">Agenten</h3>
+                                <div id="agentDashList"></div>
+                            </div>
+                        </div>
+                        <div class="dash-section">
+                            <h3 class="dash-section-title">Geplante Aufgaben</h3>
+                            <div id="jobsList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Projekte -->
+            <div class="view hidden" id="viewProjekte">
+                <div class="projekte-scroll">
+                    <div class="projekte">
+                        <div class="projekte-header">
+                            <h2 class="projekte-title">Projekte</h2>
+                            <button class="projekte-new-btn" id="newProjectBtn">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                                Neues Projekt
+                            </button>
+                        </div>
+                        <div class="project-form hidden" id="projectForm">
+                            <input type="text" id="projectNameInput" placeholder="Projektname" class="project-input">
+                            <input type="text" id="projectDescInput" placeholder="Beschreibung (optional)" class="project-input">
+                            <div class="project-form-actions">
+                                <button class="project-form-btn save" id="projectSaveBtn">Erstellen</button>
+                                <button class="project-form-btn cancel" id="projectCancelBtn">Abbrechen</button>
+                            </div>
+                        </div>
+                        <div id="projectList"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: Settings -->
+            <div class="view hidden" id="viewSettings">
+                <div class="settings-scroll">
+                    <div class="settings">
+                        <h2 class="settings-title">Einstellungen</h2>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Modell</h3>
+                            <div id="modelSelector"></div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Gedaechtnis</h3>
+                            <div id="memoryBrowser"></div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Agenten-Vorlagen</h3>
+                            <div id="templateList"></div>
+                        </div>
+                        <div class="settings-section">
+                            <h3 class="settings-section-title">Systeminfo</h3>
+                            <div id="sysInfo"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>
     </div>
 
     <audio id="ttsAudio" preload="none"></audio>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=14"></script>
 </body>
 </html>

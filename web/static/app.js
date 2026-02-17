@@ -675,7 +675,587 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// ============ View Router ============
+
+const _views = { chat: 'viewChat', dashboard: 'viewDashboard', projekte: 'viewProjekte', settings: 'viewSettings' };
+const _viewTitles = { chat: 'Clara', dashboard: 'Dashboard', projekte: 'Projekte', settings: 'Einstellungen' };
+let _currentView = 'chat';
+let _dashboardInterval = null;
+
+function switchView(viewName) {
+    if (!_views[viewName]) viewName = 'chat';
+    _currentView = viewName;
+
+    document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
+    document.getElementById(_views[viewName]).classList.remove('hidden');
+
+    document.querySelectorAll('.nav-item').forEach(n => {
+        n.classList.toggle('active', n.dataset.view === viewName);
+    });
+
+    document.getElementById('topbarTitle').textContent = _viewTitles[viewName];
+
+    // Show/hide chat-specific topbar actions
+    clearBtn.style.display = viewName === 'chat' ? '' : 'none';
+
+    if (viewName === 'dashboard') {
+        loadDashboard();
+        _dashboardInterval = setInterval(loadDashboard, 30000);
+    } else {
+        if (_dashboardInterval) { clearInterval(_dashboardInterval); _dashboardInterval = null; }
+    }
+    if (viewName === 'projekte') loadProjekte();
+    if (viewName === 'settings') loadSettings();
+
+    history.replaceState(null, '', '#' + viewName);
+}
+
+// Nav click handlers
+document.querySelectorAll('.nav-item').forEach(nav => {
+    nav.addEventListener('click', (e) => {
+        e.preventDefault();
+        switchView(nav.dataset.view);
+    });
+});
+
+// ============ Dashboard ============
+
+async function loadDashboard() {
+    const [statsRes, statusRes, activityRes, overviewRes, storageRes] = await Promise.all([
+        fetch('/api/dashboard/stats').catch(() => null),
+        fetch('/api/dashboard/status').catch(() => null),
+        fetch('/api/dashboard/activity').catch(() => null),
+        fetch('/api/dashboard/overview').catch(() => null),
+        fetch('/api/dashboard/storage').catch(() => null),
+    ]);
+
+    if (statusRes?.ok) renderStatusCards(await statusRes.json());
+    if (statsRes?.ok) renderStatsGrid(await statsRes.json());
+    if (storageRes?.ok) renderStorageDisplay(await storageRes.json());
+    if (activityRes?.ok) renderActivityList((await activityRes.json()).events);
+    if (overviewRes?.ok) {
+        const ov = await overviewRes.json();
+        renderSkillList(ov.skills);
+        renderAgentDashList(ov.agents);
+        renderJobsList(ov.jobs);
+    }
+}
+
+function renderStatusCards(status) {
+    const el = document.getElementById('statusCards');
+    el.innerHTML = [
+        { name: 'Ollama', ok: status.ollama },
+        { name: 'Stable Diffusion', ok: status.stable_diffusion },
+        { name: 'Discord', ok: status.discord },
+    ].map(s => `
+        <div class="status-pill">
+            <span class="status-dot ${s.ok ? 'ok' : 'error'}"></span>
+            <span>${s.name}</span>
+        </div>
+    `).join('') + `
+        <div class="status-pill">
+            <span style="color:var(--accent);font-weight:600;">${escapeHtml(status.model || '')}</span>
+        </div>
+    `;
+}
+
+function renderStatsGrid(stats) {
+    const el = document.getElementById('statsGrid');
+    const items = [
+        { value: stats.conversations || 0, label: 'Konversationen' },
+        { value: stats.memories || 0, label: 'Erinnerungen' },
+        { value: stats.projects?.total || 0, label: 'Projekte' },
+        { value: stats.tasks?.total || 0, label: 'Aufgaben' },
+    ];
+    el.innerHTML = items.map(i => `
+        <div class="stat-card">
+            <div class="stat-value">${i.value}</div>
+            <div class="stat-label">${i.label}</div>
+        </div>
+    `).join('');
+}
+
+function renderActivityList(events) {
+    const el = document.getElementById('activityList');
+    if (!events || events.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine aktuellen Ereignisse</div>';
+        return;
+    }
+    el.innerHTML = events.map(e => {
+        const time = e.timestamp ? new Date(e.timestamp).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+        return `
+            <div class="event-item">
+                <span class="event-type">${escapeHtml(e.type)}</span>
+                <span class="event-source">${escapeHtml(e.source)}</span>
+                <span class="event-time">${time}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderSkillList(skills) {
+    const el = document.getElementById('skillList');
+    if (!skills || skills.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine Skills</div>';
+        return;
+    }
+    el.innerHTML = skills.map(s => `
+        <div class="list-item">
+            <span class="list-item-name">${escapeHtml(s.name)}</span>
+            <span class="list-item-desc">${escapeHtml(s.description || '')}</span>
+        </div>
+    `).join('');
+}
+
+function renderAgentDashList(agents) {
+    const el = document.getElementById('agentDashList');
+    if (!agents || agents.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine Agenten</div>';
+        return;
+    }
+    el.innerHTML = agents.map(a => `
+        <div class="list-item">
+            <span class="list-item-name">${escapeHtml(a.name)}</span>
+            <span class="list-item-badge">${escapeHtml(a.model || '')}</span>
+        </div>
+    `).join('');
+}
+
+function renderJobsList(jobs) {
+    const el = document.getElementById('jobsList');
+    if (!jobs || jobs.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine geplanten Aufgaben</div>';
+        return;
+    }
+    el.innerHTML = jobs.map(j => `
+        <div class="list-item">
+            <span class="list-item-name">${escapeHtml(j.name)}</span>
+            <span class="list-item-desc" style="font-family:monospace;">${escapeHtml(j.cron || '')}</span>
+            <span class="list-item-desc">${escapeHtml(j.command || '')}</span>
+        </div>
+    `).join('');
+}
+
+// ============ Storage Display ============
+
+function _formatBytes(bytes) {
+    if (bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(1) + ' ' + units[i];
+}
+
+function renderStorageDisplay(data) {
+    const el = document.getElementById('storageDisplay');
+    const bars = [
+        { label: 'Datenbank', size: data.db_size, color: 'var(--accent)' },
+        { label: 'Generierte Bilder', size: data.images_size, color: '#a78bfa' },
+        { label: 'Audio', size: data.audio_size, color: '#f472b6' },
+        { label: 'Uploads', size: data.uploads_size, color: '#fbbf24' },
+    ];
+    const maxSize = Math.max(...bars.map(b => b.size), 1);
+
+    let html = `<div class="storage-total">
+        <span class="storage-total-label">Gesamt</span>
+        <span class="storage-total-value">${_formatBytes(data.total_size)}</span>
+    </div>`;
+
+    html += '<div class="storage-bars">';
+    for (const bar of bars) {
+        const pct = Math.max((bar.size / maxSize) * 100, 2);
+        html += `
+            <div class="storage-bar-row">
+                <span class="storage-bar-label">${bar.label}</span>
+                <div class="storage-bar-track">
+                    <div class="storage-bar-fill" style="width:${pct}%;background:${bar.color}"></div>
+                </div>
+                <span class="storage-bar-value">${_formatBytes(bar.size)}</span>
+            </div>
+        `;
+    }
+    html += '</div>';
+
+    if (data.memory_by_category && data.memory_by_category.length > 0) {
+        html += '<div class="storage-memory-cats">';
+        html += '<div class="storage-subtitle">Erinnerungen nach Kategorie</div>';
+        for (const cat of data.memory_by_category) {
+            html += `
+                <div class="storage-cat-row">
+                    <span class="storage-cat-name">${escapeHtml(cat.category)}</span>
+                    <span class="storage-cat-count">${cat.count}</span>
+                </div>
+            `;
+        }
+        html += '</div>';
+    }
+
+    html += `<div class="storage-conv-count">${data.conversations} Konversationen gespeichert</div>`;
+    el.innerHTML = html;
+}
+
+// ============ Projekte ============
+
+let _projekteData = [];
+
+async function loadProjekte() {
+    const res = await fetch('/api/projects').catch(() => null);
+    if (res?.ok) {
+        const data = await res.json();
+        _projekteData = data.projects || [];
+        renderProjectList();
+    }
+}
+
+function renderProjectList() {
+    const el = document.getElementById('projectList');
+    if (_projekteData.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine Projekte vorhanden</div>';
+        return;
+    }
+
+    el.innerHTML = _projekteData.map(p => {
+        const statusClass = p.status === 'active' ? 'active' : p.status === 'completed' ? 'completed' : 'archived';
+        const statusLabel = p.status === 'active' ? 'Aktiv' : p.status === 'completed' ? 'Abgeschlossen' : 'Archiviert';
+        const taskTotal = p.task_count || 0;
+        const tasksDone = p.tasks_done || 0;
+        const progress = taskTotal > 0 ? Math.round((tasksDone / taskTotal) * 100) : 0;
+
+        return `
+            <div class="project-card" data-project-id="${p.id}">
+                <div class="project-card-header" onclick="toggleProjectTasks(${p.id})">
+                    <div class="project-card-info">
+                        <div class="project-card-name">${escapeHtml(p.name)}</div>
+                        ${p.description ? `<div class="project-card-desc">${escapeHtml(p.description)}</div>` : ''}
+                    </div>
+                    <div class="project-card-meta">
+                        <span class="project-status-badge ${statusClass}">${statusLabel}</span>
+                        <span class="project-task-count">${tasksDone}/${taskTotal} Aufgaben</span>
+                        ${taskTotal > 0 ? `
+                            <div class="project-progress">
+                                <div class="project-progress-fill" style="width:${progress}%"></div>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="project-card-actions">
+                        <button class="project-delete-btn" onclick="event.stopPropagation();deleteProject(${p.id},'${escapeHtml(p.name).replace(/'/g, "\\'")}')" title="Projekt loeschen">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                        </button>
+                        <svg class="project-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="6 9 12 15 18 9"/></svg>
+                    </div>
+                </div>
+                <div class="project-tasks-panel hidden" id="tasks-${p.id}"></div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function toggleProjectTasks(projectId) {
+    const panel = document.getElementById(`tasks-${projectId}`);
+    const card = panel.closest('.project-card');
+
+    if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        card.classList.remove('expanded');
+        return;
+    }
+
+    card.classList.add('expanded');
+    panel.classList.remove('hidden');
+    panel.innerHTML = '<div class="dash-empty">Laden...</div>';
+
+    const res = await fetch(`/api/projects/${projectId}/tasks`).catch(() => null);
+    if (!res?.ok) {
+        panel.innerHTML = '<div class="dash-empty">Fehler beim Laden</div>';
+        return;
+    }
+    const data = await res.json();
+    renderTaskPanel(panel, projectId, data.tasks || []);
+}
+
+function renderTaskPanel(panel, projectId, tasks) {
+    let html = `
+        <div class="task-add-row">
+            <input type="text" class="task-input" id="taskInput-${projectId}" placeholder="Neue Aufgabe..." onkeydown="if(event.key==='Enter')addTask(${projectId})">
+            <select class="task-priority-select" id="taskPriority-${projectId}">
+                <option value="0">Normal</option>
+                <option value="1">Hoch</option>
+                <option value="2">Dringend</option>
+            </select>
+            <button class="task-add-btn" onclick="addTask(${projectId})">Hinzufuegen</button>
+        </div>
+    `;
+
+    if (tasks.length === 0) {
+        html += '<div class="dash-empty">Keine Aufgaben</div>';
+    } else {
+        const statusOrder = { pending: 0, in_progress: 1, done: 2 };
+        tasks.sort((a, b) => (statusOrder[a.status] ?? 0) - (statusOrder[b.status] ?? 0));
+
+        html += tasks.map(t => {
+            const statusIcon = t.status === 'done'
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>'
+                : t.status === 'in_progress'
+                ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+                : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>';
+
+            const priorityBadge = t.priority >= 2
+                ? '<span class="task-priority urgent">Dringend</span>'
+                : t.priority === 1
+                ? '<span class="task-priority high">Hoch</span>'
+                : '';
+
+            const nextStatus = t.status === 'pending' ? 'in_progress' : t.status === 'in_progress' ? 'done' : null;
+            const statusBtn = nextStatus
+                ? `<button class="task-status-btn" onclick="updateTaskStatus(${t.id},${projectId},'${nextStatus}')" title="${nextStatus === 'in_progress' ? 'Starten' : 'Abschliessen'}">${statusIcon}</button>`
+                : `<span class="task-status-done">${statusIcon}</span>`;
+
+            const dueDateStr = t.due_date ? `<span class="task-due">${escapeHtml(t.due_date)}</span>` : '';
+
+            return `
+                <div class="task-item ${t.status}">
+                    ${statusBtn}
+                    <div class="task-item-content">
+                        <span class="task-item-title">${escapeHtml(t.title)}</span>
+                        ${t.description ? `<span class="task-item-desc">${escapeHtml(t.description)}</span>` : ''}
+                    </div>
+                    ${priorityBadge}
+                    ${dueDateStr}
+                    <button class="task-delete-btn" onclick="deleteTask(${t.id},${projectId})" title="Loeschen">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                </div>
+            `;
+        }).join('');
+    }
+
+    panel.innerHTML = html;
+}
+
+async function addTask(projectId) {
+    const titleInput = document.getElementById(`taskInput-${projectId}`);
+    const prioritySelect = document.getElementById(`taskPriority-${projectId}`);
+    const title = titleInput.value.trim();
+    if (!title) return;
+
+    await fetch(`/api/projects/${projectId}/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, priority: parseInt(prioritySelect.value) }),
+    });
+    titleInput.value = '';
+    await refreshTaskPanel(projectId);
+    loadProjekte();
+}
+
+async function refreshTaskPanel(projectId) {
+    const panel = document.getElementById(`tasks-${projectId}`);
+    if (!panel || panel.classList.contains('hidden')) return;
+    const res = await fetch(`/api/projects/${projectId}/tasks`).catch(() => null);
+    if (res?.ok) {
+        const data = await res.json();
+        renderTaskPanel(panel, projectId, data.tasks || []);
+    }
+}
+
+async function updateTaskStatus(taskId, projectId, newStatus) {
+    await fetch(`/api/tasks/${taskId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+    });
+    await refreshTaskPanel(projectId);
+    loadProjekte();
+}
+
+async function deleteTask(taskId, projectId) {
+    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+    await refreshTaskPanel(projectId);
+    loadProjekte();
+}
+
+async function deleteProject(projectId, projectName) {
+    if (!confirm(`Projekt "${projectName}" und alle Aufgaben loeschen?`)) return;
+    await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    loadProjekte();
+}
+
+// Project form handlers
+document.getElementById('newProjectBtn').addEventListener('click', () => {
+    document.getElementById('projectForm').classList.toggle('hidden');
+    document.getElementById('projectNameInput').focus();
+});
+
+document.getElementById('projectCancelBtn').addEventListener('click', () => {
+    document.getElementById('projectForm').classList.add('hidden');
+    document.getElementById('projectNameInput').value = '';
+    document.getElementById('projectDescInput').value = '';
+});
+
+document.getElementById('projectSaveBtn').addEventListener('click', async () => {
+    const name = document.getElementById('projectNameInput').value.trim();
+    if (!name) return;
+    const desc = document.getElementById('projectDescInput').value.trim();
+    const res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: desc }),
+    });
+    if (res.ok) {
+        document.getElementById('projectForm').classList.add('hidden');
+        document.getElementById('projectNameInput').value = '';
+        document.getElementById('projectDescInput').value = '';
+        loadProjekte();
+    } else {
+        const err = await res.json();
+        alert(err.error || 'Fehler beim Erstellen');
+    }
+});
+
+document.getElementById('projectNameInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('projectSaveBtn').click();
+});
+
+// ============ Settings ============
+
+let _memoryCategory = null;
+
+async function loadSettings() {
+    const [modelsRes, memoriesRes, configRes, agentsRes] = await Promise.all([
+        fetch('/api/settings/models').catch(() => null),
+        fetch('/api/settings/memories').catch(() => null),
+        fetch('/api/settings/config').catch(() => null),
+        fetch('/api/agents').catch(() => null),
+    ]);
+
+    if (modelsRes?.ok) renderModelSelector(await modelsRes.json());
+    if (memoriesRes?.ok) renderMemoryBrowser(await memoriesRes.json());
+    if (configRes?.ok) renderSysInfo(await configRes.json());
+    if (agentsRes?.ok) renderTemplateList((await agentsRes.json()).agents);
+}
+
+function renderModelSelector(data) {
+    const el = document.getElementById('modelSelector');
+    const current = data.current || '';
+    const models = data.models || [];
+    if (models.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine Modelle gefunden</div>';
+        return;
+    }
+    el.innerHTML = models.map(m => {
+        const name = m.name || '';
+        const isCurrent = name === current || name === current + ':latest' || current === name.replace(':latest', '');
+        const size = m.size ? (m.size / 1e9).toFixed(1) + ' GB' : '';
+        return `
+            <div class="model-card ${isCurrent ? 'current' : ''}">
+                <div>
+                    <div class="model-name">${escapeHtml(name)}</div>
+                    ${size ? `<div class="model-size">${size}</div>` : ''}
+                </div>
+                ${isCurrent ? '<span class="model-current-badge">Aktiv</span>' : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+function renderMemoryBrowser(data) {
+    const el = document.getElementById('memoryBrowser');
+    const categories = data.categories || [];
+    const memories = data.memories || [];
+
+    // Tab bar
+    const allActive = !_memoryCategory ? 'active' : '';
+    let tabs = `<button class="memory-tab ${allActive}" data-cat="">Alle</button>`;
+    tabs += categories.map(c => {
+        const active = _memoryCategory === c ? 'active' : '';
+        return `<button class="memory-tab ${active}" data-cat="${escapeHtml(c)}">${escapeHtml(c)}</button>`;
+    }).join('');
+
+    // Entries
+    const filtered = _memoryCategory
+        ? memories.filter(m => m.category === _memoryCategory)
+        : memories;
+
+    let entries = '';
+    if (filtered.length === 0) {
+        entries = '<div class="dash-empty">Keine Erinnerungen</div>';
+    } else {
+        entries = filtered.map(m => `
+            <div class="memory-entry" data-cat="${escapeHtml(m.category || '')}" data-key="${escapeHtml(m.key || '')}">
+                <div class="memory-entry-content">
+                    <div class="memory-entry-key">${escapeHtml(m.key || '')}</div>
+                    <div class="memory-entry-value">${escapeHtml(m.value || '')}</div>
+                    ${m.category ? `<div class="memory-entry-category">${escapeHtml(m.category)}</div>` : ''}
+                </div>
+                <button class="memory-delete-btn" title="Loeschen">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                </button>
+            </div>
+        `).join('');
+    }
+
+    el.innerHTML = `<div class="memory-tabs">${tabs}</div><div>${entries}</div>`;
+
+    // Tab click handlers
+    el.querySelectorAll('.memory-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            _memoryCategory = tab.dataset.cat || null;
+            renderMemoryBrowser(data);
+        });
+    });
+
+    // Delete handlers
+    el.querySelectorAll('.memory-delete-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const entry = btn.closest('.memory-entry');
+            const cat = entry.dataset.cat;
+            const key = entry.dataset.key;
+            await fetch(`/api/settings/memories/${encodeURIComponent(cat)}/${encodeURIComponent(key)}`, { method: 'DELETE' });
+            entry.remove();
+        });
+    });
+}
+
+function renderTemplateList(agents) {
+    const el = document.getElementById('templateList');
+    if (!agents || agents.length === 0) {
+        el.innerHTML = '<div class="dash-empty">Keine Agenten-Vorlagen</div>';
+        return;
+    }
+    el.innerHTML = agents.map(a => `
+        <div class="list-item">
+            <span class="list-item-name">${escapeHtml(a.name)}</span>
+            <span class="list-item-desc">${escapeHtml(a.description || '')}</span>
+            <span class="list-item-badge">${escapeHtml(a.model || '')}</span>
+        </div>
+    `).join('');
+}
+
+function renderSysInfo(config) {
+    const el = document.getElementById('sysInfo');
+    const rows = [
+        ['Ollama URL', config.ollama_url],
+        ['Modell', config.model],
+        ['Embedding', config.embedding_model],
+        ['SD URL', config.sd_url],
+        ['TTS Stimme', config.tts_voice],
+        ['Datenbank', config.db_path],
+        ['Host', `${config.host}:${config.port}`],
+    ];
+    el.innerHTML = rows.map(([k, v]) => `
+        <div class="sysinfo-row">
+            <span class="sysinfo-key">${escapeHtml(k)}</span>
+            <span class="sysinfo-value">${escapeHtml(v || '')}</span>
+        </div>
+    `).join('');
+}
+
 // ============ Init ============
 updateTtsIcon();
 connect();
 loadAgents();
+
+// Init view from hash
+const initHash = location.hash.slice(1);
+if (initHash && _views[initHash]) {
+    switchView(initHash);
+}

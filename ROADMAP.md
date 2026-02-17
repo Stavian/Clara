@@ -5,11 +5,11 @@
 | Phase | Bereich | Prioritat | Status |
 |-------|---------|-----------|--------|
 | 9 | Erweiterte Memory-Systeme | Sofort nutzlich | Fertig |
-| 10 | Multi-Channel Messaging | Sofort nutzlich | Offen |
-| 11 | Automatisierung & Skripte | Produktivitat | Teilweise |
+| 10 | Multi-Channel Messaging | Sofort nutzlich | Teilweise |
+| 11 | Automatisierung & Skripte | Produktivitat | Fertig |
 | 12 | Erweiterte Skills & Tools | Produktivitat | Teilweise |
 | 13 | Agent-System | Power-Feature | Fertig |
-| 14 | Erweiterte UI | Power-Feature | Offen |
+| 14 | Erweiterte UI | Power-Feature | Teilweise |
 | 15 | Sicherheit & Stabilitat | Qualitat | Teilweise |
 | 16 | Voice & Multimedia | Qualitat | Teilweise |
 | 17 | Externe Integrationen | Nice-to-have | Offen |
@@ -35,7 +35,7 @@
 - [ ] Integration von WhatsApp als Kommunikationskanal
 - [x] Einheitliches Session-Management uber alle Kanale (ChatEngine + ChannelAdapter in chat/)
 - [x] Berechtigungssystem: Owner vs. oeffentliche Skills per User-ID
-- [ ] Proaktive Benachrichtigungen und Kanal-Router
+- [x] Proaktive Benachrichtigungen und Kanal-Router (notifications/notification_service.py)
 
 ---
 
@@ -45,10 +45,10 @@
 
 - [x] Cron-Jobs (TaskSchedulerSkill + SchedulerEngine)
 - [x] Heartbeat-Checks (Heartbeat-System mit konfigurierbarem Intervall)
-- [ ] Webhook-Empfanger
-- [ ] Automatische Aktionen basierend auf Ereignissen
-- [ ] Batch-Skript-Ausfuhrung
-- [ ] Proaktive Benachrichtigungen
+- [x] Webhook-Empfanger (webhook/ mit Token-Auth, WebhookManagerSkill)
+- [x] Automatische Aktionen basierend auf Ereignissen (automation/ mit EventBus + AutomationEngine)
+- [x] Batch-Skript-Ausfuhrung (scripts/script_engine.py, BatchScriptSkill)
+- [x] Proaktive Benachrichtigungen (notifications/notification_service.py, Web + Discord)
 
 ---
 
@@ -84,16 +84,16 @@
 
 **Prioritat:** Power-Feature
 
-- [ ] Dashboard mit System-Status
-- [ ] Projekt-Ubersicht
-- [ ] Aufgaben-Verwaltung
-- [ ] Speicherverbrauch-Anzeige
-- [ ] Settings-Seite (Modell-Wechsel, Skills-Management, Verzeichnis-Konfiguration)
+- [x] Dashboard mit System-Status (Ollama/SD/Discord Status, Statistiken, Aktivitaet, Skills, Agenten, Jobs)
+- [x] Projekt-Ubersicht (Projekte-View mit Karten, Status-Badges, Fortschrittsbalken, CRUD)
+- [x] Aufgaben-Verwaltung (Task-Panel pro Projekt, Status-Cycling, Prioritaeten, Erstellen/Loeschen)
+- [x] Speicherverbrauch-Anzeige (Dashboard-Sektion mit Balkendiagramm, Speicher nach Kategorie)
+- [x] Settings-Seite (Modell-Browser, Gedaechtnis-Verwaltung, Agenten-Vorlagen, Systeminfo)
 - [ ] Slash-Commands
-- [ ] Datei-Upload
+- [x] Datei-Upload (Bild-Upload mit Vorschau und Clipboard-Paste)
 - [ ] Code-Highlighting
-- [ ] Dark/Light-Theme
-- [ ] Mobile-Optimierung
+- [x] Dark/Light-Theme (Gemini-inspiriertes Dark Theme mit Blue-Accent)
+- [x] Mobile-Optimierung (responsive Layout, Dashboard-Grid-Anpassung)
 
 ---
 

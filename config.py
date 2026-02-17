@@ -42,5 +42,7 @@ class Config:
     DISCORD_OWNER_ID: str | None = os.getenv("DISCORD_OWNER_ID", None)
     DISCORD_PUBLIC_SKILLS: list[str] = ["web_browse", "web_fetch", "image_generation"]
 
+    SCRIPTS_DIR: Path = BASE_DIR / "data" / "scripts"
+
     # Agent templates directory (YAML-based, replaces hardcoded AGENTS dict)
     AGENT_TEMPLATES_DIR: Path = BASE_DIR / "data" / "agent_templates"

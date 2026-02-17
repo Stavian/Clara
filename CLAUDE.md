@@ -20,6 +20,7 @@ Clara is a locally-hosted AI assistant with a web UI and Discord bot. Everything
 ### Key Components
 
 - **`main.py`** — FastAPI app entry point, skill registration, lifespan management, Discord bot startup
+- **`data/agent_templates/custom/adult_roleplay.yaml`** — Needs to be ignored, no writing, reading, editing.
 - **`chat/engine.py`** — Channel-agnostic `ChatEngine` class: LLM tool loop, streaming, DB save, fact extraction, TTS. Shared `_strip_think()` function.
 - **`chat/adapters.py`** — `ChannelAdapter` ABC + `WebSocketAdapter` implementation
 - **`web/routes.py`** — WebSocket handler (uses `ChatEngine` + `WebSocketAdapter`), system prompt, HTTP routes

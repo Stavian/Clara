@@ -55,7 +55,7 @@ class Config:
     # Web UI authentication (disabled when WEB_PASSWORD is not set)
     WEB_PASSWORD: str | None = os.getenv("WEB_PASSWORD", None)
     JWT_SECRET: str = os.getenv("JWT_SECRET", "")
-    WEB_PASSWORD_HASH: str | None = None  # Computed below at module level
+    WEB_PASSWORD_HASH: bytes | None = None  # Computed below at module level (bcrypt bytes)
 
 
 # Derive JWT_SECRET and bcrypt hash once at import time
@@ -69,5 +69,5 @@ if not Config.JWT_SECRET:
     Config.JWT_SECRET = _secrets.token_hex(32)
 
 if Config.WEB_PASSWORD:
-    from passlib.context import CryptContext as _Ctx
-    Config.WEB_PASSWORD_HASH = _Ctx(schemes=["bcrypt"], deprecated="auto").hash(Config.WEB_PASSWORD)
+    import bcrypt as _bcrypt
+    Config.WEB_PASSWORD_HASH = _bcrypt.hashpw(Config.WEB_PASSWORD.encode(), _bcrypt.gensalt())

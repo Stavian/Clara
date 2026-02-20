@@ -7,15 +7,14 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 from config import Config
 
 logger = logging.getLogger(__name__)
 
 ALGORITHM = "HS256"
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 def auth_enabled() -> bool:
@@ -27,7 +26,7 @@ def verify_password(plain: str) -> bool:
     """Compare plain-text password against the stored bcrypt hash."""
     if not Config.WEB_PASSWORD_HASH:
         return False
-    return _pwd_ctx.verify(plain, Config.WEB_PASSWORD_HASH)
+    return bcrypt.checkpw(plain.encode(), Config.WEB_PASSWORD_HASH)
 
 
 def create_access_token() -> str:

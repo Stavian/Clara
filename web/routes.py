@@ -4,15 +4,31 @@ import uuid
 import logging
 import aiohttp
 from pathlib import Path
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File, Request
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, UploadFile, File, Request, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from config import Config
 from chat.adapters import WebSocketAdapter
+from auth.security import auth_enabled, verify_password, verify_token, create_access_token
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
+
+_bearer = HTTPBearer(auto_error=False)
+
+
+def _require_auth(creds: HTTPAuthorizationCredentials | None = Depends(_bearer)) -> None:
+    """FastAPI dependency: no-op when auth is disabled, 401 otherwise."""
+    if not auth_enabled():
+        return
+    token = creds.credentials if creds else None
+    if not verify_token(token):
+        raise HTTPException(401, "Nicht authentifiziert", headers={"WWW-Authenticate": "Bearer"})
 
 _engine = None
 _ollama = None
@@ -84,13 +100,35 @@ def init_routes(engine, ollama=None, db=None, event_bus=None,
     _project_store = project_store
 
 
+@router.get("/api/auth/check")
+async def auth_check():
+    """Let the frontend discover whether auth is enabled."""
+    return {"auth_enabled": auth_enabled()}
+
+
+@router.post("/api/auth/login")
+@limiter.limit("5/minute")
+async def login(request: Request):
+    """
+    Accepts JSON: {"password": "..."}
+    Returns: {"token": "<jwt>", "auth_enabled": true}
+    Rate-limited to 5 attempts per minute per IP.
+    """
+    if not auth_enabled():
+        return {"token": "disabled", "auth_enabled": False}
+    data = await request.json()
+    if not verify_password((data.get("password") or "").strip()):
+        raise HTTPException(401, "Falsches Passwort")
+    return {"token": create_access_token(), "auth_enabled": True}
+
+
 @router.get("/", response_class=HTMLResponse)
 async def index():
     index_path = Path(__file__).parent / "static" / "index.html"
     return FileResponse(str(index_path))
 
 
-@router.post("/api/upload")
+@router.post("/api/upload", dependencies=[Depends(_require_auth)])
 async def upload_file(file: UploadFile = File(...)):
     """Upload an image file for Clara to analyze."""
     allowed_types = {"image/png", "image/jpeg", "image/gif", "image/webp"}
@@ -112,7 +150,10 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @router.websocket("/api/chat")
-async def chat_websocket(ws: WebSocket):
+async def chat_websocket(ws: WebSocket, token: str | None = Query(default=None)):
+    if auth_enabled() and not verify_token(token):
+        await ws.close(code=4401)
+        return
     await ws.accept()
     session_id = str(uuid.uuid4())
     logger.info(f"New WebSocket session: {session_id}")
@@ -158,7 +199,7 @@ async def chat_websocket(ws: WebSocket):
             pass
 
 
-@router.get("/api/agents")
+@router.get("/api/agents", dependencies=[Depends(_require_auth)])
 async def list_agents():
     """Return available agents for the UI dropdown."""
     if _engine and _engine.agent_router:
@@ -175,7 +216,7 @@ async def list_agents():
     return {"agents": []}
 
 
-@router.get("/api/health")
+@router.get("/api/health", dependencies=[Depends(_require_auth)])
 async def health():
     ollama_ok = await _ollama.is_available() if _ollama else False
     return {
@@ -186,7 +227,7 @@ async def health():
 
 # --- Dashboard endpoints ---
 
-@router.get("/api/dashboard/stats")
+@router.get("/api/dashboard/stats", dependencies=[Depends(_require_auth)])
 async def dashboard_stats():
     if not _db:
         return {"conversations": 0, "memories": 0, "projects": {"total": 0}, "tasks": {"total": 0}}
@@ -210,7 +251,7 @@ async def dashboard_stats():
     }
 
 
-@router.get("/api/dashboard/status")
+@router.get("/api/dashboard/status", dependencies=[Depends(_require_auth)])
 async def dashboard_status():
     ollama_ok = await _ollama.is_available() if _ollama else False
     sd_ok = await _sd_check_fn() if _sd_check_fn else False
@@ -223,7 +264,7 @@ async def dashboard_status():
     }
 
 
-@router.get("/api/dashboard/activity")
+@router.get("/api/dashboard/activity", dependencies=[Depends(_require_auth)])
 async def dashboard_activity():
     if not _event_bus:
         return {"events": []}
@@ -236,7 +277,7 @@ async def dashboard_activity():
     }
 
 
-@router.get("/api/dashboard/overview")
+@router.get("/api/dashboard/overview", dependencies=[Depends(_require_auth)])
 async def dashboard_overview():
     skills = []
     if _engine:
@@ -253,7 +294,7 @@ async def dashboard_overview():
 
 # --- Settings endpoints ---
 
-@router.get("/api/settings/models")
+@router.get("/api/settings/models", dependencies=[Depends(_require_auth)])
 async def settings_models():
     models = []
     try:
@@ -271,7 +312,7 @@ async def settings_models():
     return {"models": models, "current": Config.OLLAMA_MODEL}
 
 
-@router.get("/api/settings/memories")
+@router.get("/api/settings/memories", dependencies=[Depends(_require_auth)])
 async def settings_memories(category: str | None = None):
     if not _db:
         return {"categories": [], "memories": []}
@@ -284,14 +325,14 @@ async def settings_memories(category: str | None = None):
     return {"categories": categories, "memories": memories}
 
 
-@router.delete("/api/settings/memories/{category}/{key}")
+@router.delete("/api/settings/memories/{category}/{key}", dependencies=[Depends(_require_auth)])
 async def delete_memory(category: str, key: str):
     if _db:
         await _db.forget(category, key)
     return {"status": "ok"}
 
 
-@router.get("/api/settings/config")
+@router.get("/api/settings/config", dependencies=[Depends(_require_auth)])
 async def settings_config():
     return {
         "ollama_url": Config.OLLAMA_BASE_URL,
@@ -307,7 +348,7 @@ async def settings_config():
 
 # --- Project Management endpoints ---
 
-@router.get("/api/projects")
+@router.get("/api/projects", dependencies=[Depends(_require_auth)])
 async def list_projects():
     if not _project_store:
         return {"projects": []}
@@ -315,7 +356,7 @@ async def list_projects():
     return {"projects": projects}
 
 
-@router.post("/api/projects")
+@router.post("/api/projects", dependencies=[Depends(_require_auth)])
 async def create_project(request: Request):
     if not _project_store:
         return JSONResponse(status_code=500, content={"error": "Store nicht verfuegbar"})
@@ -330,7 +371,7 @@ async def create_project(request: Request):
     return project
 
 
-@router.put("/api/projects/{project_id}")
+@router.put("/api/projects/{project_id}", dependencies=[Depends(_require_auth)])
 async def update_project(project_id: int, request: Request):
     if not _project_store:
         return JSONResponse(status_code=500, content={"error": "Store nicht verfuegbar"})
@@ -342,7 +383,7 @@ async def update_project(project_id: int, request: Request):
     return {"status": "ok"}
 
 
-@router.delete("/api/projects/{project_id}")
+@router.delete("/api/projects/{project_id}", dependencies=[Depends(_require_auth)])
 async def delete_project_by_id(project_id: int):
     if not _project_store:
         return JSONResponse(status_code=500, content={"error": "Store nicht verfuegbar"})
@@ -353,7 +394,7 @@ async def delete_project_by_id(project_id: int):
     return {"status": "ok"}
 
 
-@router.get("/api/projects/{project_id}/tasks")
+@router.get("/api/projects/{project_id}/tasks", dependencies=[Depends(_require_auth)])
 async def list_project_tasks(project_id: int):
     if not _project_store:
         return {"tasks": []}
@@ -361,7 +402,7 @@ async def list_project_tasks(project_id: int):
     return {"tasks": tasks}
 
 
-@router.post("/api/projects/{project_id}/tasks")
+@router.post("/api/projects/{project_id}/tasks", dependencies=[Depends(_require_auth)])
 async def create_task(project_id: int, request: Request):
     if not _project_store:
         return JSONResponse(status_code=500, content={"error": "Store nicht verfuegbar"})
@@ -378,7 +419,7 @@ async def create_task(project_id: int, request: Request):
     return task
 
 
-@router.put("/api/tasks/{task_id}")
+@router.put("/api/tasks/{task_id}", dependencies=[Depends(_require_auth)])
 async def update_task(task_id: int, request: Request):
     if not _project_store:
         return JSONResponse(status_code=500, content={"error": "Store nicht verfuegbar"})
@@ -387,7 +428,7 @@ async def update_task(task_id: int, request: Request):
     return {"status": "ok"}
 
 
-@router.delete("/api/tasks/{task_id}")
+@router.delete("/api/tasks/{task_id}", dependencies=[Depends(_require_auth)])
 async def delete_task(task_id: int):
     if not _project_store:
         return JSONResponse(status_code=500, content={"error": "Store nicht verfuegbar"})
@@ -397,7 +438,7 @@ async def delete_task(task_id: int):
 
 # --- Storage usage endpoint ---
 
-@router.get("/api/dashboard/storage")
+@router.get("/api/dashboard/storage", dependencies=[Depends(_require_auth)])
 async def dashboard_storage():
     loop = asyncio.get_event_loop()
 

@@ -32,7 +32,9 @@ from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
 from agents.agent_router import AgentRouter
 from chat.engine import ChatEngine
-from web.routes import router, init_routes, SYSTEM_PROMPT
+from web.routes import router, init_routes, SYSTEM_PROMPT, limiter
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 from automation.event_bus import EventBus
 from automation.automation_engine import AutomationEngine
 from webhook.manager import WebhookManager
@@ -257,6 +259,8 @@ Config.GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
 Config.GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
 Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 app = FastAPI(title="Clara", docs_url=None, redoc_url=None, lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(router)
 app.include_router(webhook_router)
 app.mount("/generated/audio", StaticFiles(directory=str(Config.GENERATED_AUDIO_DIR)), name="generated_audio")

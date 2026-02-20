@@ -27,6 +27,103 @@ let ttsEnabled = localStorage.getItem('ttsEnabled') === 'true';
 let pendingUploadPath = null;
 let selectedAgent = null;
 
+// ============ Auth ============
+let _authToken = localStorage.getItem('authToken');
+
+function _getAuthHeaders() {
+    return (_authToken && _authToken !== 'disabled')
+        ? { 'Authorization': `Bearer ${_authToken}` } : {};
+}
+
+async function _authedFetch(url, opts = {}) {
+    const resp = await fetch(url, { ...opts, headers: { ...(opts.headers || {}), ..._getAuthHeaders() } });
+    if (resp.status === 401) { _logout(); return null; }
+    return resp;
+}
+
+function _logout() {
+    localStorage.removeItem('authToken');
+    _authToken = null;
+    document.getElementById('loginOverlay').classList.remove('hidden');
+}
+
+async function initAuth() {
+    let authEnabled = true;
+    try {
+        const chk = await fetch('/api/auth/check');
+        const data = await chk.json();
+        authEnabled = data.auth_enabled;
+    } catch (_) { /* assume auth required */ }
+
+    if (!authEnabled) {
+        _authToken = 'disabled';
+        document.getElementById('loginOverlay').classList.add('hidden');
+        _afterLogin();
+        return;
+    }
+
+    // Try existing stored token
+    if (_authToken && _authToken !== 'disabled') {
+        const probe = await fetch('/api/agents', { headers: _getAuthHeaders() });
+        if (probe.ok) {
+            document.getElementById('loginOverlay').classList.add('hidden');
+            _afterLogin();
+            return;
+        }
+        localStorage.removeItem('authToken');
+        _authToken = null;
+    }
+
+    document.getElementById('loginOverlay').classList.remove('hidden');
+}
+
+function _afterLogin() {
+    connect();
+    loadAgents();
+    const initHash = location.hash.slice(1);
+    if (initHash && _views[initHash]) {
+        switchView(initHash);
+    }
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const password = document.getElementById('loginPassword').value;
+    const btn = document.getElementById('loginBtn');
+    const err = document.getElementById('loginError');
+    err.classList.add('hidden');
+    btn.disabled = true;
+    btn.textContent = '...';
+    try {
+        const res = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password }),
+        });
+        if (res.status === 429) {
+            err.textContent = 'Zu viele Versuche. Bitte warten.';
+            err.classList.remove('hidden');
+            return;
+        }
+        if (!res.ok) {
+            err.textContent = 'Falsches Passwort';
+            err.classList.remove('hidden');
+            return;
+        }
+        const { token } = await res.json();
+        _authToken = token;
+        localStorage.setItem('authToken', token);
+        document.getElementById('loginOverlay').classList.add('hidden');
+        _afterLogin();
+    } catch (_) {
+        err.textContent = 'Verbindungsfehler';
+        err.classList.remove('hidden');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Anmelden';
+    }
+});
+
 // Init TTS toggle state
 function updateTtsIcon() {
     ttsIconOn.style.display = ttsEnabled ? '' : 'none';
@@ -38,7 +135,9 @@ function updateTtsIcon() {
 
 function connect() {
     const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${protocol}//${location.host}/api/chat`);
+    const tokenParam = (_authToken && _authToken !== 'disabled')
+        ? `?token=${encodeURIComponent(_authToken)}` : '';
+    ws = new WebSocket(`${protocol}//${location.host}/api/chat${tokenParam}`);
 
     ws.onopen = () => {
         isConnected = true;
@@ -47,11 +146,16 @@ function connect() {
         updateSendBtn();
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
         isConnected = false;
         statusIndicator.className = 'status-indicator error';
-        statusIndicator.title = 'Getrennt - Verbindung wird wiederhergestellt...';
         updateSendBtn();
+        if (event.code === 4401) {
+            // Token rejected — show login instead of reconnecting
+            _logout();
+            return;
+        }
+        statusIndicator.title = 'Getrennt - Verbindung wird wiederhergestellt...';
         setTimeout(connect, 3000);
     };
 
@@ -528,8 +632,8 @@ async function uploadImage(file) {
     formData.append('file', file);
 
     try {
-        const resp = await fetch('/api/upload', { method: 'POST', body: formData });
-        if (!resp.ok) throw new Error('Upload fehlgeschlagen');
+        const resp = await _authedFetch('/api/upload', { method: 'POST', body: formData });
+        if (!resp || !resp.ok) throw new Error('Upload fehlgeschlagen');
         const data = await resp.json();
         pendingUploadPath = data.path;
 
@@ -629,7 +733,8 @@ input.addEventListener('paste', (e) => {
 
 async function loadAgents() {
     try {
-        const resp = await fetch('/api/agents');
+        const resp = await _authedFetch('/api/agents');
+        if (!resp) return;
         const data = await resp.json();
         populateAgentDropdown(data.agents);
     } catch (e) {
@@ -752,11 +857,11 @@ document.querySelectorAll('.nav-item').forEach(nav => {
 
 async function loadDashboard() {
     const [statsRes, statusRes, activityRes, overviewRes, storageRes] = await Promise.all([
-        fetch('/api/dashboard/stats').catch(() => null),
-        fetch('/api/dashboard/status').catch(() => null),
-        fetch('/api/dashboard/activity').catch(() => null),
-        fetch('/api/dashboard/overview').catch(() => null),
-        fetch('/api/dashboard/storage').catch(() => null),
+        _authedFetch('/api/dashboard/stats').catch(() => null),
+        _authedFetch('/api/dashboard/status').catch(() => null),
+        _authedFetch('/api/dashboard/activity').catch(() => null),
+        _authedFetch('/api/dashboard/overview').catch(() => null),
+        _authedFetch('/api/dashboard/storage').catch(() => null),
     ]);
 
     if (statusRes?.ok) renderStatusCards(await statusRes.json());
@@ -928,7 +1033,7 @@ function renderStorageDisplay(data) {
 let _projekteData = [];
 
 async function loadProjekte() {
-    const res = await fetch('/api/projects').catch(() => null);
+    const res = await _authedFetch('/api/projects').catch(() => null);
     if (res?.ok) {
         const data = await res.json();
         _projekteData = data.projects || [];
@@ -993,7 +1098,7 @@ async function toggleProjectTasks(projectId) {
     panel.classList.remove('hidden');
     panel.innerHTML = '<div class="dash-empty">Laden...</div>';
 
-    const res = await fetch(`/api/projects/${projectId}/tasks`).catch(() => null);
+    const res = await _authedFetch(`/api/projects/${projectId}/tasks`).catch(() => null);
     if (!res?.ok) {
         panel.innerHTML = '<div class="dash-empty">Fehler beim Laden</div>';
         return;
@@ -1067,7 +1172,7 @@ async function addTask(projectId) {
     const title = titleInput.value.trim();
     if (!title) return;
 
-    await fetch(`/api/projects/${projectId}/tasks`, {
+    await _authedFetch(`/api/projects/${projectId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, priority: parseInt(prioritySelect.value) }),
@@ -1080,7 +1185,7 @@ async function addTask(projectId) {
 async function refreshTaskPanel(projectId) {
     const panel = document.getElementById(`tasks-${projectId}`);
     if (!panel || panel.classList.contains('hidden')) return;
-    const res = await fetch(`/api/projects/${projectId}/tasks`).catch(() => null);
+    const res = await _authedFetch(`/api/projects/${projectId}/tasks`).catch(() => null);
     if (res?.ok) {
         const data = await res.json();
         renderTaskPanel(panel, projectId, data.tasks || []);
@@ -1088,7 +1193,7 @@ async function refreshTaskPanel(projectId) {
 }
 
 async function updateTaskStatus(taskId, projectId, newStatus) {
-    await fetch(`/api/tasks/${taskId}`, {
+    await _authedFetch(`/api/tasks/${taskId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus }),
@@ -1098,14 +1203,14 @@ async function updateTaskStatus(taskId, projectId, newStatus) {
 }
 
 async function deleteTask(taskId, projectId) {
-    await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+    await _authedFetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
     await refreshTaskPanel(projectId);
     loadProjekte();
 }
 
 async function deleteProject(projectId, projectName) {
     if (!confirm(`Projekt "${projectName}" und alle Aufgaben loeschen?`)) return;
-    await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    await _authedFetch(`/api/projects/${projectId}`, { method: 'DELETE' });
     loadProjekte();
 }
 
@@ -1125,12 +1230,12 @@ document.getElementById('projectSaveBtn').addEventListener('click', async () => 
     const name = document.getElementById('projectNameInput').value.trim();
     if (!name) return;
     const desc = document.getElementById('projectDescInput').value.trim();
-    const res = await fetch('/api/projects', {
+    const res = await _authedFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, description: desc }),
     });
-    if (res.ok) {
+    if (res?.ok) {
         document.getElementById('projectForm').classList.add('hidden');
         document.getElementById('projectNameInput').value = '';
         document.getElementById('projectDescInput').value = '';
@@ -1151,10 +1256,10 @@ let _memoryCategory = null;
 
 async function loadSettings() {
     const [modelsRes, memoriesRes, configRes, agentsRes] = await Promise.all([
-        fetch('/api/settings/models').catch(() => null),
-        fetch('/api/settings/memories').catch(() => null),
-        fetch('/api/settings/config').catch(() => null),
-        fetch('/api/agents').catch(() => null),
+        _authedFetch('/api/settings/models').catch(() => null),
+        _authedFetch('/api/settings/memories').catch(() => null),
+        _authedFetch('/api/settings/config').catch(() => null),
+        _authedFetch('/api/agents').catch(() => null),
     ]);
 
     if (modelsRes?.ok) renderModelSelector(await modelsRes.json());
@@ -1239,7 +1344,7 @@ function renderMemoryBrowser(data) {
             const entry = btn.closest('.memory-entry');
             const cat = entry.dataset.cat;
             const key = entry.dataset.key;
-            await fetch(`/api/settings/memories/${encodeURIComponent(cat)}/${encodeURIComponent(key)}`, { method: 'DELETE' });
+            await _authedFetch(`/api/settings/memories/${encodeURIComponent(cat)}/${encodeURIComponent(key)}`, { method: 'DELETE' });
             entry.remove();
         });
     });
@@ -1281,11 +1386,4 @@ function renderSysInfo(config) {
 
 // ============ Init ============
 updateTtsIcon();
-connect();
-loadAgents();
-
-// Init view from hash
-const initHash = location.hash.slice(1);
-if (initHash && _views[initHash]) {
-    switchView(initHash);
-}
+initAuth(); // handles connect() + loadAgents() + hash routing after auth check

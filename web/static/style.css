@@ -1852,3 +1852,119 @@ textarea::placeholder {
     text-align: center;
     padding: 8px;
 }
+
+/* ============ Login Overlay ============ */
+.login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+}
+
+.login-overlay.hidden {
+    display: none;
+}
+
+.login-card {
+    width: 100%;
+    max-width: 360px;
+    padding: 48px 40px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.login-logo {
+    color: var(--accent);
+    margin-bottom: 4px;
+    opacity: 0.85;
+}
+
+.login-title {
+    font-size: 2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), #c084fc);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin-top: -4px;
+}
+
+.login-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.login-input {
+    width: 100%;
+    padding: 11px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 0.95rem;
+    outline: none;
+    transition: border-color var(--transition), box-shadow var(--transition);
+}
+
+.login-input:focus {
+    border-color: rgba(138, 180, 248, 0.4);
+    box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.login-input::placeholder {
+    color: var(--text-muted);
+}
+
+.login-error {
+    font-size: 0.82rem;
+    color: var(--error);
+    text-align: center;
+    min-height: 1rem;
+}
+
+.login-error.hidden {
+    display: none;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 11px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background var(--transition);
+    margin-top: 2px;
+}
+
+.login-btn:hover:not(:disabled) {
+    background: var(--accent-hover);
+}
+
+.login-btn:disabled {
+    background: var(--bg-hover);
+    color: var(--text-muted);
+    cursor: default;
+}

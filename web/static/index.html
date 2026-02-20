@@ -4,11 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clara</title>
-    <link rel="stylesheet" href="/static/style.css?v=14">
+    <link rel="stylesheet" href="/static/style.css?v=15">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- Login overlay — shown by JS when auth is required and no valid token exists -->
+    <div id="loginOverlay" class="login-overlay hidden">
+        <div class="login-card">
+            <div class="login-logo">
+                <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+                </svg>
+            </div>
+            <h1 class="login-title">Clara</h1>
+            <p class="login-subtitle">Passwort eingeben</p>
+            <form id="loginForm" class="login-form" autocomplete="on">
+                <input
+                    type="password"
+                    id="loginPassword"
+                    class="login-input"
+                    placeholder="Passwort"
+                    autocomplete="current-password"
+                    autofocus
+                >
+                <div id="loginError" class="login-error hidden">Falsches Passwort</div>
+                <button type="submit" class="login-btn" id="loginBtn">Anmelden</button>
+            </form>
+        </div>
+    </div>
+
     <div class="layout">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
@@ -229,6 +254,6 @@
     </div>
 
     <audio id="ttsAudio" preload="none"></audio>
-    <script src="/static/app.js?v=14"></script>
+    <script src="/static/app.js?v=15"></script>
 </body>
 </html>

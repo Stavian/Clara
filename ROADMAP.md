@@ -10,7 +10,7 @@
 | 12 | Erweiterte Skills & Tools | Produktivitat | Teilweise |
 | 13 | Agent-System | Power-Feature | Fertig |
 | 14 | Erweiterte UI | Power-Feature | Teilweise |
-| 15 | Sicherheit & Stabilitat | Qualitat | Teilweise |
+| 15 | Sicherheit & Stabilitat | Qualitat | Teilweise (Auth+RateLimit fertig) |
 | 16 | Voice & Multimedia | Qualitat | Teilweise |
 | 17 | Externe Integrationen | Nice-to-have | Offen |
 | 18 | Multi-Provider LLM | Produktivitat | Offen |
@@ -159,13 +159,13 @@
 
 **Prioritat:** Qualitat
 
-- [ ] Passwort-Schutz (Token/Passwort-Auth fuer Web-UI und API)
+- [x] Passwort-Schutz (Token/Passwort-Auth fuer Web-UI und API)
 - [ ] Audit-Log (Alle Tool-Aufrufe und Aktionen protokollieren)
 - [ ] Tool-Richtlinien (Allow/Deny-Regeln pro Kanal und Nutzer)
 - [ ] Automatische Backups (DB, Config, Memory als Scheduled Task)
 - [x] Health-Check-Endpunkt (/api/health mit Ollama-Status)
 - [ ] Graceful Error Recovery (Automatisches Wiederherstellen nach Fehlern)
-- [ ] Rate Limiting (Anfragen pro Zeiteinheit begrenzen)
+- [x] Rate Limiting (Anfragen pro Zeiteinheit begrenzen)
 - [ ] Clara Doctor (Selbstdiagnose-Tool mit Auto-Fix)
 - [ ] Security Audit: Konfiguration auf Sicherheitsprobleme pruefen
 - [ ] Idempotente Tool-Calls: Sichere Wiederholung bei Netzwerk-Fehlern

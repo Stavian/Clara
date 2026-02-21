@@ -11,11 +11,13 @@ from services.tts_service import generate_tts
 logger = logging.getLogger(__name__)
 
 _THINK_RE = re.compile(r"<think>[\s\S]*?</think>\s*", re.IGNORECASE)
+_TOOL_CALL_RE = re.compile(r"<tool_call>[\s\S]*?</tool_call>\s*", re.IGNORECASE)
 
 
 def _strip_think(text: str) -> str:
-    """Remove <think>...</think> blocks and model filler from output."""
+    """Remove <think>...</think>, <tool_call>...</tool_call> blocks and model filler from output."""
     text = _THINK_RE.sub("", text)
+    text = _TOOL_CALL_RE.sub("", text)
     # Handle unclosed <think> (no </think>): drop everything from <think> onward
     if "<think>" in text.lower():
         idx = text.lower().rfind("<think>")

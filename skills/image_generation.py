@@ -7,6 +7,7 @@ from pathlib import Path
 
 import aiohttp
 
+from config import Config
 from skills.base_skill import BaseSkill
 
 logger = logging.getLogger(__name__)
@@ -63,20 +64,20 @@ class ImageGenerationSkill(BaseSkill):
         }
 
     _DEFAULT_NEGATIVE = (
-        "(semi-realistic, cgi, 3d, render, sketch, cartoon, drawing, anime, "
-        "animation, comic, illustration, painting, oil painting, artwork, "
-        "octane render, cinema 4d, unreal engine, doll, figurine:1.4), "
-        "(worst quality, low quality:1.4), bad anatomy, bad proportions, "
-        "deformed, disfigured, mutated, extra limb, missing limb, "
-        "extra fingers, (mutated hands and fingers:1.3), poorly drawn hands, "
-        "poorly drawn face, text, watermark, signature, logo, "
-        "professional studio photo, studio lighting, perfect lighting, "
-        "perfect composition, airbrushed, overly smooth skin, perfect skin, "
+        "deformed, distorted, disfigured, bad anatomy, bad proportions, "
+        "extra limb, missing limb, extra fingers, mutated hands and fingers, "
+        "poorly drawn hands, poorly drawn face, "
+        "text, watermark, signature, logo, "
+        "professional photography, dslr, studio lighting, studio photo, "
+        "bokeh, cinematic, masterpiece, 8k, 4k, ultra hd, "
+        "airbrushed, plastic skin, overly smooth skin, perfect skin, "
+        "cgi, 3d render, cartoon, anime, illustration, painting, "
         "(asian, chinese, japanese, korean, east asian features:1.3)"
     )
 
     async def _analyze_image(self, img_b64: str, original_prompt: str) -> tuple[str, int]:
         """Analyze image and return (description, score 1-10)."""
+        t0 = time.perf_counter()
         try:
             payload = {
                 "model": VISION_MODEL,
@@ -99,10 +100,10 @@ class ImageGenerationSkill(BaseSkill):
                 if resp.status == 200:
                     data = await resp.json()
                     text = data.get("response", "")
-                    # Extract score from response
                     match = re.search(r"SCORE:\s*(\d+)", text, re.IGNORECASE)
                     score = int(match.group(1)) if match else 5
                     score = max(1, min(10, score))
+                    logger.info(f"[TIMING] Analysis: {time.perf_counter() - t0:.1f}s → score {score}/10")
                     return text, score
             return "Analyse fehlgeschlagen.", 5
         except Exception as e:
@@ -110,45 +111,56 @@ class ImageGenerationSkill(BaseSkill):
             return "Analyse nicht verfuegbar.", 5
 
     async def _generate_once(self, enhanced_prompt: str, seed: int = -1) -> dict | str:
-        """Generate a single image. Returns API data dict or error string."""
+        """Generate a single image using Hi-Res Fix: 1024→2048. Returns API data dict or error string."""
+        # Hi-Res Fix pipeline:
+        # Pass 1 — generate clean composition at 1024×1024 (SDXL native res, ~35 steps)
+        # Pass 2 — upscale to 2048×2048 with 25 denoising steps (much faster than direct 2048 generation)
+        # iPhone 6 aesthetic: portrait format, no Hi-Res Fix (softness helps realism),
+        # DPM++ 2M Karras for natural results, low CFG to avoid over-processed look
         payload = {
             "prompt": enhanced_prompt,
             "negative_prompt": self._DEFAULT_NEGATIVE,
-            "width": 512,
-            "height": 768,
-            "steps": 30,  # Reduced from 50 — 30 steps is sufficient for most samplers
-            "cfg_scale": 7,
-            "sampler_name": "DPM++ SDE Karras",
+            "width": 768,
+            "height": 1024,
+            "steps": 30,
+            "cfg_scale": 5.5,
+            "sampler_name": "DPM++ 2M Karras",
             "seed": seed,
             "batch_size": 1,
             "n_iter": 1,
             "override_settings": {
-                "CLIP_stop_at_last_layers": 2,
+                "CLIP_stop_at_last_layers": 1,
+                "sd_model_checkpoint": Config.SD_MODEL,
             },
         }
 
+        t0 = time.perf_counter()
         session = await self._get_session()
         async with session.post(
             f"{self._sd_api_url}/sdapi/v1/txt2img",
             json=payload,
-            timeout=aiohttp.ClientTimeout(total=300),
+            timeout=aiohttp.ClientTimeout(total=600),
         ) as resp:
+            elapsed = time.perf_counter() - t0
             if resp.status != 200:
                 error_text = await resp.text()
                 return f"SD API Fehler (Status {resp.status}): {error_text[:300]}"
-            return await resp.json()
+            data = await resp.json()
+            logger.info(f"[TIMING] SD generation (1024 base + 2048 hi-res): {elapsed:.1f}s")
+            return data
 
     async def execute(self, prompt: str, **kwargs) -> str:
         try:
+            t_total = time.perf_counter()
             self._output_dir.mkdir(parents=True, exist_ok=True)
 
             enhanced_prompt = (
-                f"(RAW photo, photorealistic:1.3), (candid photo, shot on iPhone:1.2), "
-                f"(european, caucasian, western european features:1.2), "
+                f"candid mobile phone photo, shot on iPhone 6, f/2.2 aperture, "
+                f"2010s aesthetic, casual snapshot, natural skin texture, "
+                f"european caucasian western european features, "
                 f"{prompt}, "
-                f"(natural lighting:1.1), (shallow depth of field:1.1), "
-                f"realistic skin texture, skin pores, lifelike texture, "
-                f"(slight film grain:0.8), authentic, 8k uhd"
+                f"casual lighting, slight motion blur, film grain, grainy, "
+                f"realistic skin pores, lifelike texture, authentic"
             )
 
             logger.info(f"Enhanced prompt: {enhanced_prompt}")
@@ -202,10 +214,11 @@ class ImageGenerationSkill(BaseSkill):
                 return "Stable Diffusion hat kein Bild zurueckgegeben."
 
             filename, analysis, score, _ = best_result
-            logger.info(f"Final image: {filename} (score: {score}/10)")
+            total = time.perf_counter() - t_total
+            logger.info(f"[TIMING] Total: {total:.1f}s — final image: {filename} (score: {score}/10)")
 
             return (
-                f"Bild generiert (Qualitaet: {score}/10).\n"
+                f"Bild generiert (Qualitaet: {score}/10, Zeit: {total:.0f}s).\n"
                 f"![Generiertes Bild](/generated/{filename})\n\n"
                 f"**Analyse:** {analysis}"
             )

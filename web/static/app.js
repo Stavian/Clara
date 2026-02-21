@@ -181,7 +181,7 @@ function connect() {
         } else if (data.type === 'audio') {
             playTtsAudio(data.src);
         } else if (data.type === 'error') {
-            appendAssistantMessage(`Fehler: ${data.content}`);
+            showToast(data.content, 'error');
         }
     };
 }
@@ -231,6 +231,7 @@ function appendAssistantMessage(text) {
         textEl.className = 'msg-text';
         textEl.innerHTML = renderMessage(text);
         lastMsg.querySelector('.msg-body').appendChild(textEl);
+        applyHighlighting(textEl);
         delete lastMsg.dataset.pendingAssistant;
         scrollToBottom();
         return;
@@ -248,6 +249,7 @@ function appendAssistantMessage(text) {
         </div>
     `;
     messagesEl.appendChild(msg);
+    applyHighlighting(msg);
     scrollToBottom();
     updateChatList(text);
 }
@@ -535,6 +537,7 @@ function finalizeStream() {
         const textEl = _streamingMsg.querySelector('.streaming-text');
         if (textEl) {
             textEl.classList.remove('streaming-text');
+            applyHighlighting(textEl);
         }
         delete _streamingMsg.dataset.pendingAssistant;
         chatHistory.push({ role: 'assistant', content: _streamingText });
@@ -548,7 +551,19 @@ function finalizeStream() {
 
 function send() {
     const text = input.value.trim();
+    _hideSlashMenu();
+
     if (!text && !pendingUploadPath) return;
+
+    // Handle slash commands client-side
+    if (text.startsWith('/')) {
+        input.value = '';
+        input.style.height = 'auto';
+        updateSendBtn();
+        handleSlashCommand(text);
+        return;
+    }
+
     if (!isConnected) return;
 
     const displayText = pendingUploadPath
@@ -603,18 +618,285 @@ function escapeHtml(text) {
 }
 
 function renderMessage(text) {
-    // Escape HTML first for safety
-    let html = escapeHtml(text);
-    // Render markdown images that point to /generated/ (trusted local path only)
-    html = html.replace(/!\[([^\]]*)\]\((\/generated\/[^)]+)\)/g,
+    const codeBlocks = [];
+    const inlineCodes = [];
+
+    // 1. Extract fenced code blocks
+    let s = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push({ lang: lang.toLowerCase(), code });
+        return `%%CODE_${idx}%%`;
+    });
+
+    // 2. Extract inline code
+    s = s.replace(/`([^`\n]+)`/g, (_, code) => {
+        const idx = inlineCodes.length;
+        inlineCodes.push(code);
+        return `%%INLINE_${idx}%%`;
+    });
+
+    // 3. HTML-escape remaining text
+    s = escapeHtml(s);
+
+    // 4. Block-level: trusted images ![alt](/generated/...)
+    s = s.replace(/!\[([^\]]*)\]\((\/generated\/[^)]+)\)/g,
         '<img class="msg-image" src="$2" alt="$1" loading="lazy">');
-    return html;
+
+    // 5. Block-level formatting (process line by line)
+    const lines = s.split('\n');
+    const out = [];
+    let inUl = false, inOl = false, inBlockquote = false;
+
+    function closeBlocks() {
+        if (inUl)        { out.push('</ul>');         inUl = false; }
+        if (inOl)        { out.push('</ol>');         inOl = false; }
+        if (inBlockquote){ out.push('</blockquote>'); inBlockquote = false; }
+    }
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
+        // Headings
+        const hMatch = line.match(/^(#{1,4})\s+(.*)/);
+        if (hMatch) {
+            closeBlocks();
+            const level = hMatch[1].length;
+            out.push(`<h${level} class="md-h">${hMatch[2]}</h${level}>`);
+            continue;
+        }
+
+        // Horizontal rule
+        if (/^(-{3,}|\*{3,})$/.test(line.trim())) {
+            closeBlocks();
+            out.push('<hr class="md-hr">');
+            continue;
+        }
+
+        // Blockquote
+        const bqMatch = line.match(/^&gt;\s?(.*)/);
+        if (bqMatch) {
+            if (!inBlockquote) { closeBlocks(); out.push('<blockquote class="md-bq">'); inBlockquote = true; }
+            out.push(bqMatch[1]);
+            continue;
+        }
+
+        // Unordered list
+        const ulMatch = line.match(/^[-*]\s+(.*)/);
+        if (ulMatch) {
+            if (inBlockquote) { closeBlocks(); }
+            if (!inUl) { if (inOl) { out.push('</ol>'); inOl = false; } out.push('<ul class="md-ul">'); inUl = true; }
+            out.push(`<li>${ulMatch[1]}</li>`);
+            continue;
+        }
+
+        // Ordered list
+        const olMatch = line.match(/^\d+\.\s+(.*)/);
+        if (olMatch) {
+            if (inBlockquote) { closeBlocks(); }
+            if (!inOl) { if (inUl) { out.push('</ul>'); inUl = false; } out.push('<ol class="md-ol">'); inOl = true; }
+            out.push(`<li>${olMatch[1]}</li>`);
+            continue;
+        }
+
+        // Empty line — close open blocks, emit paragraph break
+        if (line.trim() === '') {
+            closeBlocks();
+            out.push('<div class="md-spacer"></div>');
+            continue;
+        }
+
+        closeBlocks();
+        out.push(line);
+    }
+    closeBlocks();
+    s = out.join('\n');
+
+    // 6. Inline formatting
+    s = s.replace(/\*\*(.+?)\*\*|__(.+?)__/g, (_, a, b) => `<strong>${a || b}</strong>`);
+    s = s.replace(/\*(.+?)\*|_(.+?)_/g, (_, a, b) => `<em>${a || b}</em>`);
+    s = s.replace(/~~(.+?)~~/g, '<s>$1</s>');
+
+    // 7. Restore inline code
+    s = s.replace(/%%INLINE_(\d+)%%/g, (_, i) =>
+        `<code class="inline-code">${escapeHtml(inlineCodes[parseInt(i)])}</code>`);
+
+    // 8. Restore fenced code blocks
+    s = s.replace(/%%CODE_(\d+)%%/g, (_, i) => {
+        const { lang, code } = codeBlocks[parseInt(i)];
+        const escapedCode = escapeHtml(code);
+        const langLabel = lang || 'code';
+        const langClass = lang ? `language-${lang}` : '';
+        return `<div class="code-block-wrapper"><div class="code-block-header"><span class="code-lang">${escapeHtml(langLabel)}</span><button class="code-copy-btn" type="button">Kopieren</button></div><pre><code class="${langClass}">${escapedCode}</code></pre></div>`;
+    });
+
+    return s;
+}
+
+function applyHighlighting(containerEl) {
+    if (typeof hljs === 'undefined') return;
+    containerEl.querySelectorAll('pre code').forEach(block => {
+        hljs.highlightElement(block);
+    });
 }
 
 function scrollToBottom() {
     requestAnimationFrame(() => {
         chatArea.scrollTop = chatArea.scrollHeight;
     });
+}
+
+// ============ Toast Notifications ============
+
+function showToast(message, type = 'info', duration = 3500) {
+    const container = document.getElementById('toastContainer');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add('toast-visible'));
+    setTimeout(() => {
+        toast.classList.remove('toast-visible');
+        toast.addEventListener('transitionend', () => toast.remove(), { once: true });
+    }, duration);
+}
+
+// ============ Lightbox ============
+
+const _lightbox = document.getElementById('lightbox');
+const _lightboxImg = document.getElementById('lightboxImg');
+
+function openLightbox(src, alt) {
+    _lightboxImg.src = src;
+    _lightboxImg.alt = alt || '';
+    _lightbox.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+    _lightbox.classList.add('hidden');
+    document.body.style.overflow = '';
+    _lightboxImg.src = '';
+}
+
+_lightbox.addEventListener('click', (e) => {
+    if (e.target === _lightbox) closeLightbox();
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !_lightbox.classList.contains('hidden')) closeLightbox();
+});
+
+// Delegate image clicks to lightbox
+messagesEl.addEventListener('click', (e) => {
+    const img = e.target.closest('.msg-image');
+    if (img) openLightbox(img.src, img.alt);
+});
+
+// Delegate copy button clicks
+messagesEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('.code-copy-btn');
+    if (!btn) return;
+    const code = btn.closest('.code-block-wrapper')?.querySelector('code');
+    if (!code) return;
+    navigator.clipboard.writeText(code.textContent).then(() => {
+        btn.textContent = 'Kopiert!';
+        setTimeout(() => { btn.textContent = 'Kopieren'; }, 1500);
+    }).catch(() => showToast('Kopieren fehlgeschlagen', 'error'));
+});
+
+// ============ Slash Commands ============
+
+const _slashCommands = [
+    { cmd: '/clear',      desc: 'Chat leeren' },
+    { cmd: '/help',       desc: 'Hilfe anzeigen' },
+    { cmd: '/dashboard',  desc: 'Dashboard öffnen' },
+    { cmd: '/projekte',   desc: 'Projekte öffnen' },
+    { cmd: '/settings',   desc: 'Einstellungen öffnen' },
+    { cmd: '/agent',      desc: 'Agent wechseln: /agent [name]' },
+];
+
+const _slashMenu = document.getElementById('slashMenu');
+let _slashSelected = -1;
+
+function _showSlashMenu(value) {
+    const query = value.slice(1).toLowerCase();
+    const matches = _slashCommands.filter(c => c.cmd.slice(1).startsWith(query));
+    if (matches.length === 0) { _hideSlashMenu(); return; }
+
+    _slashMenu.innerHTML = matches.map((c, i) =>
+        `<div class="slash-menu-item" data-cmd="${c.cmd}"><span class="slash-cmd">${c.cmd}</span><span class="slash-desc">${c.desc}</span></div>`
+    ).join('');
+    _slashMenu.classList.remove('hidden');
+    _slashSelected = -1;
+
+    _slashMenu.querySelectorAll('.slash-menu-item').forEach(item => {
+        item.addEventListener('click', () => {
+            input.value = item.dataset.cmd + ' ';
+            _hideSlashMenu();
+            input.focus();
+            updateSendBtn();
+        });
+    });
+}
+
+function _hideSlashMenu() {
+    _slashMenu.classList.add('hidden');
+    _slashSelected = -1;
+}
+
+function _slashMenuNavigate(dir) {
+    const items = _slashMenu.querySelectorAll('.slash-menu-item');
+    if (items.length === 0) return false;
+    items.forEach(i => i.classList.remove('active'));
+    _slashSelected = Math.max(0, Math.min(items.length - 1, _slashSelected + dir));
+    items[_slashSelected].classList.add('active');
+    return true;
+}
+
+function handleSlashCommand(text) {
+    const parts = text.trim().split(/\s+/);
+    const cmd = parts[0].toLowerCase();
+    const arg = parts.slice(1).join(' ');
+
+    switch (cmd) {
+        case '/clear':
+            clearChat();
+            break;
+        case '/help':
+            appendAssistantMessage(
+                '**Verfügbare Slash-Befehle:**\n' +
+                '- `/clear` — Chat leeren\n' +
+                '- `/help` — Diese Hilfe anzeigen\n' +
+                '- `/dashboard` — Dashboard öffnen\n' +
+                '- `/projekte` — Projekte öffnen\n' +
+                '- `/settings` — Einstellungen öffnen\n' +
+                '- `/agent [name]` — Agent wechseln'
+            );
+            break;
+        case '/dashboard':
+            switchView('dashboard');
+            break;
+        case '/projekte':
+            switchView('projekte');
+            break;
+        case '/settings':
+            switchView('settings');
+            break;
+        case '/agent':
+            if (!arg) { showToast('Verwendung: /agent [name]', 'info'); return; }
+            // Find agent by name (case-insensitive)
+            const agentOpt = document.querySelector(`.agent-option[data-agent="${arg}"]`);
+            if (agentOpt) {
+                agentOpt.click();
+                showToast(`Agent gewechselt: ${arg}`, 'success');
+            } else {
+                showToast(`Agent nicht gefunden: ${arg}`, 'error');
+            }
+            break;
+        default:
+            showToast(`Unbekannter Befehl: ${cmd}`, 'error');
+    }
 }
 
 // ============ TTS ============
@@ -654,15 +936,36 @@ function clearUploadPreview() {
 
 // ============ Event Listeners ============
 
-// Auto-resize textarea
+// Auto-resize textarea + slash menu
 input.addEventListener('input', () => {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 200) + 'px';
     updateSendBtn();
+    const val = input.value;
+    if (val.startsWith('/') && val.length > 0) {
+        _showSlashMenu(val);
+    } else {
+        _hideSlashMenu();
+    }
 });
 
-// Enter to send, Shift+Enter for newline
+// Enter to send, Shift+Enter for newline, arrow keys for slash menu
 input.addEventListener('keydown', (e) => {
+    if (!_slashMenu.classList.contains('hidden')) {
+        if (e.key === 'ArrowDown') { e.preventDefault(); _slashMenuNavigate(1); return; }
+        if (e.key === 'ArrowUp')   { e.preventDefault(); _slashMenuNavigate(-1); return; }
+        if (e.key === 'Tab' || e.key === 'Enter') {
+            const active = _slashMenu.querySelector('.slash-menu-item.active');
+            if (active) {
+                e.preventDefault();
+                input.value = active.dataset.cmd + ' ';
+                _hideSlashMenu();
+                updateSendBtn();
+                return;
+            }
+        }
+        if (e.key === 'Escape') { e.preventDefault(); _hideSlashMenu(); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         send();
@@ -1209,8 +1512,9 @@ async function deleteTask(taskId, projectId) {
 }
 
 async function deleteProject(projectId, projectName) {
-    if (!confirm(`Projekt "${projectName}" und alle Aufgaben loeschen?`)) return;
+    if (!confirm(`Projekt "${projectName}" und alle Aufgaben löschen?`)) return;
     await _authedFetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+    showToast('Projekt gelöscht', 'success');
     loadProjekte();
 }
 
@@ -1239,10 +1543,11 @@ document.getElementById('projectSaveBtn').addEventListener('click', async () => 
         document.getElementById('projectForm').classList.add('hidden');
         document.getElementById('projectNameInput').value = '';
         document.getElementById('projectDescInput').value = '';
+        showToast('Projekt erstellt', 'success');
         loadProjekte();
     } else {
-        const err = await res.json();
-        alert(err.error || 'Fehler beim Erstellen');
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Fehler beim Erstellen', 'error');
     }
 });
 

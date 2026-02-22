@@ -1,13 +1,48 @@
 import logging
 import subprocess
 import asyncio
+import sys
 import uvicorn
 import aiohttp
 from contextlib import asynccontextmanager
+from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from config import Config
+
+
+def _setup_logging():
+    Config.LOG_DIR.mkdir(parents=True, exist_ok=True)
+    fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+
+    console = logging.StreamHandler()
+    console.setFormatter(fmt)
+
+    file_handler = RotatingFileHandler(
+        Config.LOG_DIR / "clara.log",
+        maxBytes=10 * 1024 * 1024,  # 10 MB per file
+        backupCount=7,
+        encoding="utf-8",
+    )
+    file_handler.setFormatter(fmt)
+
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    root.addHandler(console)
+    root.addHandler(file_handler)
+
+
+def _handle_unhandled_exception(exc_type, exc_value, exc_traceback):
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+    logging.critical("Unhandled exception", exc_info=(exc_type, exc_value, exc_traceback))
+
+
+sys.excepthook = _handle_unhandled_exception
+_setup_logging()
+
 from llm.ollama_client import OllamaClient
 from memory.database import Database
 from skills.skill_registry import SkillRegistry
@@ -42,10 +77,6 @@ from webhook.routes import webhook_router, init_webhook_routes
 from notifications.notification_service import NotificationService
 from scripts.script_engine import ScriptEngine
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
 
 db = Database(Config.DB_PATH)
 ollama = OllamaClient(
@@ -78,7 +109,10 @@ async def _start_stable_diffusion():
         return
 
     launch_py = Config.SD_FORGE_DIR / "launch.py"
-    venv_python = Config.SD_FORGE_DIR / "venv" / "Scripts" / "python.exe"
+    # Support both Windows (Scripts/) and Linux (bin/) venv layouts
+    venv_python_win = Config.SD_FORGE_DIR / "venv" / "Scripts" / "python.exe"
+    venv_python_lin = Config.SD_FORGE_DIR / "venv" / "bin" / "python"
+    venv_python = venv_python_win if venv_python_win.exists() else venv_python_lin
 
     if not launch_py.exists():
         logging.warning(f"Stable Diffusion not found at {Config.SD_FORGE_DIR}")

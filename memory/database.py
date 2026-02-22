@@ -16,6 +16,9 @@ class Database:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self.db = await aiosqlite.connect(str(self.db_path))
         self.db.row_factory = aiosqlite.Row
+        await self.db.execute("PRAGMA journal_mode=WAL")
+        await self.db.execute("PRAGMA synchronous=NORMAL")
+        await self.db.commit()
         await self._create_tables()
         await self._create_indexes()
         logger.info(f"Database initialized at {self.db_path}")

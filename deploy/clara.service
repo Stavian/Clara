@@ -1,0 +1,34 @@
+[Unit]
+Description=Clara AI Assistant
+Documentation=https://github.com/marlonarndt/clara
+After=network-online.target local-fs.target
+Wants=network-online.target
+RequiresMountsFor=/mnt/storage
+
+[Service]
+Type=simple
+User=clara
+Group=clara
+WorkingDirectory=/opt/clara
+EnvironmentFile=/opt/clara/.env
+
+# Use the venv Python
+ExecStart=/opt/clara/venv/bin/python main.py
+
+# Always restart on crash or clean exit
+Restart=always
+RestartSec=10
+
+# Give the app 30 seconds to shut down gracefully
+TimeoutStopSec=30
+
+# Logging goes to journald (use: journalctl -u clara -f)
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clara
+
+# Resource limits (optional — adjust to taste)
+# LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

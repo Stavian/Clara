@@ -20,12 +20,12 @@ class Config:
     SD_MODEL: str = os.getenv("SD_MODEL", "sd_xl_base_1.0")
     SD_HR_UPSCALER: str = os.getenv("SD_HR_UPSCALER", "R-ESRGAN 4x+")
 
-    DB_PATH: Path = BASE_DIR / "data" / "clara.db"
-    LOG_DIR: Path = BASE_DIR / "data" / "logs"
+    DB_PATH: Path = Path(os.getenv("DB_PATH", str(BASE_DIR / "data" / "clara.db")))
+    LOG_DIR: Path = Path(os.getenv("LOG_DIR", str(BASE_DIR / "data" / "logs")))
     STATIC_DIR: Path = BASE_DIR / "web" / "static"
-    GENERATED_IMAGES_DIR: Path = BASE_DIR / "data" / "generated_images"
-    GENERATED_AUDIO_DIR: Path = BASE_DIR / "data" / "generated_audio"
-    UPLOAD_DIR: Path = BASE_DIR / "data" / "uploads"
+    GENERATED_IMAGES_DIR: Path = Path(os.getenv("GENERATED_IMAGES_DIR", str(BASE_DIR / "data" / "generated_images")))
+    GENERATED_AUDIO_DIR: Path = Path(os.getenv("GENERATED_AUDIO_DIR", str(BASE_DIR / "data" / "generated_audio")))
+    UPLOAD_DIR: Path = Path(os.getenv("UPLOAD_DIR", str(BASE_DIR / "data" / "uploads")))
     TTS_VOICE: str = os.getenv("TTS_VOICE", "de-DE-KatjaNeural")
 
     _raw_allowed = os.getenv("ALLOWED_DIRECTORIES", "*").strip()

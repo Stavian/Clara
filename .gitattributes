@@ -1,0 +1,6 @@
+# Ensure shell scripts and service files always use LF on checkout
+deploy/*.sh     text eol=lf
+deploy/*.service text eol=lf
+
+# Default: auto line endings for everything else
+*               text=auto

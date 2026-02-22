@@ -216,6 +216,13 @@ async def list_agents():
     return {"agents": []}
 
 
+@router.get("/health")
+async def health_public():
+    """Unauthenticated liveness probe for uptime monitors and systemd watchdog."""
+    ollama_ok = await _ollama.is_available() if _ollama else False
+    return {"status": "ok" if ollama_ok else "degraded", "ollama": ollama_ok}
+
+
 @router.get("/api/health", dependencies=[Depends(_require_auth)])
 async def health():
     ollama_ok = await _ollama.is_available() if _ollama else False

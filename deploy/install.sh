@@ -89,8 +89,10 @@ echo "[8/11] Installing daily backup cron job..."
 CRON_LINE="0 3 * * * $CLARA_DIR/deploy/backup.sh >> $STORAGE_ROOT/logs/backup.log 2>&1"
 chmod +x "$CLARA_DIR/deploy/backup.sh"
 chmod +x "$CLARA_DIR/deploy/update.sh"
-(crontab -l 2>/dev/null | grep -qF "backup.sh") || \
-    (crontab -l 2>/dev/null; echo "$CRON_LINE") | crontab -
+EXISTING_CRON=$(crontab -l 2>/dev/null || true)
+if ! echo "$EXISTING_CRON" | grep -qF "backup.sh"; then
+    (echo "$EXISTING_CRON"; echo "$CRON_LINE") | crontab -
+fi
 echo "  Backup cron job added (runs daily at 03:00)."
 
 # --- 9. Install Ollama + configure HDD model storage ---

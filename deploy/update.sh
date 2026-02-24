@@ -12,6 +12,7 @@ set -euo pipefail
 CLARA_DIR="/opt/clara"
 
 echo "[1/3] Pulling latest code from GitHub..."
+git config --global --add safe.directory "$CLARA_DIR" 2>/dev/null || true
 git -C "$CLARA_DIR" pull
 
 echo "[2/3] Updating Python dependencies..."

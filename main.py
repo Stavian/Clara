@@ -174,8 +174,8 @@ async def lifespan(app: FastAPI):
 
     await db.initialize()
 
-    # Start Stable Diffusion in background
-    sd_task = asyncio.create_task(_start_stable_diffusion())
+    # Start Stable Diffusion in background (only if SD_ENABLED=true in .env)
+    sd_task = asyncio.create_task(_start_stable_diffusion()) if Config.SD_ENABLED else None
 
     # Initialize Phase 11 subsystems
     notification_service.set_db(db)
@@ -197,7 +197,8 @@ async def lifespan(app: FastAPI):
     Config.GENERATED_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
     Config.GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     Config.UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
+    if Config.SD_ENABLED:
+        skills.register(ImageGenerationSkill(Config.SD_API_URL, Config.GENERATED_IMAGES_DIR))
     skills.register(MemoryManagerSkill(db))
 
     # Register Phase 12 skills
@@ -237,7 +238,7 @@ async def lifespan(app: FastAPI):
         db=db,
         event_bus=event_bus,
         scheduler_engine=scheduler_engine,
-        sd_check_fn=_is_sd_running,
+        sd_check_fn=_is_sd_running if Config.SD_ENABLED else None,
         project_store=project_store,
     )
 
@@ -280,7 +281,8 @@ async def lifespan(app: FastAPI):
     if discord_bot:
         await discord_bot.close()
     await heartbeat.stop()
-    sd_task.cancel()
+    if sd_task:
+        sd_task.cancel()
     if _sd_process and _sd_process.poll() is None:
         logging.info("Stopping Stable Diffusion...")
         _sd_process.terminate()

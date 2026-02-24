@@ -15,6 +15,7 @@ class Config:
     HOST: str = os.getenv("HOST", "127.0.0.1")
     PORT: int = int(os.getenv("PORT", "8080"))
 
+    SD_ENABLED: bool = os.getenv("SD_ENABLED", "false").lower() == "true"
     SD_API_URL: str = os.getenv("SD_API_URL", "http://127.0.0.1:7860")
     SD_FORGE_DIR: Path = Path(os.getenv("SD_FORGE_DIR", "/mnt/storage/stable-diffusion-webui-forge"))
     SD_MODEL: str = os.getenv("SD_MODEL", "sd_xl_base_1.0")

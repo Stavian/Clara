@@ -6,14 +6,16 @@ from llm.ollama_client import OllamaClient
 from skills.skill_registry import SkillRegistry
 from chat.engine import _strip_think
 from agents.template_loader import AgentTemplate, TemplateLoader
+from workspace.loader import WorkspaceLoader
 
 logger = logging.getLogger(__name__)
 
 
 class AgentRouter:
-    def __init__(self, ollama: OllamaClient, skills: SkillRegistry):
+    def __init__(self, ollama: OllamaClient, skills: SkillRegistry, workspace_loader: WorkspaceLoader | None = None):
         self.ollama = ollama
         self.skills = skills
+        self.workspace_loader = workspace_loader
         self.loader = TemplateLoader(Config.AGENT_TEMPLATES_DIR)
         self.agents: dict[str, AgentTemplate] = self.loader.load_all()
 
@@ -121,9 +123,16 @@ class AgentRouter:
 
         logger.info(f"Running agent '{agent_name}' with model '{model}'")
 
+        # Inject workspace context (IDENTITY.md, SOUL.md, TOOLS.md, MEMORY.md, BOOT.md)
+        if self.workspace_loader:
+            workspace_ctx = self.workspace_loader.build_context(agent_name)
+            full_system = system_prompt + workspace_ctx
+        else:
+            full_system = system_prompt
+
         messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        if full_system:
+            messages.append({"role": "system", "content": full_system})
 
         if conversation_context:
             ctx_limit = tpl.context_window

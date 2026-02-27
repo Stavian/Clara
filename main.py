@@ -76,6 +76,7 @@ from webhook.manager import WebhookManager
 from webhook.routes import webhook_router, init_webhook_routes
 from notifications.notification_service import NotificationService
 from scripts.script_engine import ScriptEngine
+from workspace.loader import WorkspaceLoader, DEFAULTS
 
 
 db = Database(Config.DB_PATH)
@@ -227,10 +228,35 @@ async def lifespan(app: FastAPI):
     scheduler_engine.skill_registry = skills
     scheduler_engine.notification_service = notification_service
 
-    agent_router = AgentRouter(ollama, skills)
+    # ── Workspace System (Phase 27) ───────────────────────────────────────────
+    # Creates per-agent workspace dirs with IDENTITY.md, SOUL.md, TOOLS.md, etc.
+    # on first run, then injects them into every system prompt at runtime.
+    workspace_loader = WorkspaceLoader(Config.AGENTS_WORKSPACE_DIR)
+
+    # Load agent templates to know which agents to create workspaces for
+    from agents.template_loader import TemplateLoader as _TLoader
+    _all_agents = _TLoader(Config.AGENT_TEMPLATES_DIR).load_all()
+    for _agent_name in _all_agents:
+        workspace_loader.ensure_workspace(_agent_name, DEFAULTS.get(_agent_name, {
+            "IDENTITY.md": f"# Identity\nName: Clara ({_agent_name})\n",
+            "SOUL.md": "# Soul\n",
+            "MEMORY.md": "# Agenten-Notizen\n",
+            "BOOT.md": "",
+        }))
+        # Regenerate TOOLS.md from live skill registry every startup
+        workspace_loader.generate_tools_md(_agent_name, skills.get_all())
+
+    # Bootstrap: create BOOTSTRAP.md only on a completely fresh install (0 messages)
+    total_messages = await db.get_total_message_count()
+    if total_messages == 0:
+        workspace_loader.ensure_bootstrap("general")
+        logging.info("Fresh install detected — bootstrap ritual created for 'general' agent")
+    # ─────────────────────────────────────────────────────────────────────────
+
+    agent_router = AgentRouter(ollama, skills, workspace_loader=workspace_loader)
 
     # Create the shared chat engine
-    chat_engine = ChatEngine(ollama, db, skills, agent_router, SYSTEM_PROMPT)
+    chat_engine = ChatEngine(ollama, db, skills, agent_router, SYSTEM_PROMPT, workspace_loader=workspace_loader)
     notification_service.set_chat_engine(chat_engine)
     init_routes(
         chat_engine,
@@ -273,6 +299,7 @@ async def lifespan(app: FastAPI):
     logging.info(f"Main model: {Config.OLLAMA_MODEL}")
     logging.info(f"Agents: {', '.join(agent_router.agents.keys())}")
     logging.info(f"Skills: {', '.join(s.name for s in skills.get_all())}")
+    logging.info(f"Workspace: {Config.AGENTS_WORKSPACE_DIR}")
     logging.info(f"Allowed directories: {'FULL ACCESS' if Config.ALLOWED_DIRECTORIES is None else Config.ALLOWED_DIRECTORIES}")
 
     yield

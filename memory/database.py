@@ -175,6 +175,12 @@ class Database:
         row = await cursor.fetchone()
         return row["cnt"] if row else 0
 
+    async def get_total_message_count(self) -> int:
+        """Return the total number of messages across all sessions (used for bootstrap detection)."""
+        cursor = await self.db.execute("SELECT COUNT(*) as cnt FROM conversations")
+        row = await cursor.fetchone()
+        return row["cnt"] if row else 0
+
     # --- Raw execute for stores ---
 
     async def execute(self, sql: str, params: tuple = ()):

@@ -50,6 +50,9 @@ class Config:
     # Agent templates directory (YAML-based, replaces hardcoded AGENTS dict)
     AGENT_TEMPLATES_DIR: Path = BASE_DIR / "data" / "agent_templates"
 
+    # Per-agent workspace directories (OpenClaw-style: IDENTITY.md, SOUL.md, TOOLS.md, ...)
+    AGENTS_WORKSPACE_DIR: Path = Path(os.getenv("AGENTS_WORKSPACE_DIR", str(BASE_DIR / "data" / "agents")))
+
     # Google Calendar (optional)
     GOOGLE_CREDENTIALS_PATH: Path = BASE_DIR / "data" / "credentials.json"
     GOOGLE_TOKEN_PATH: Path = BASE_DIR / "data" / "google_token.json"

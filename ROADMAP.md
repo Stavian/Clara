@@ -22,10 +22,15 @@
 | 24 | Canvas & Dynamic UI | Nice-to-have | Offen |
 | 25 | Claude Code Integration | Power-Feature | Offen |
 | 26 | Kontext-Management & Kompaktierung | Power-Feature | Offen |
-| 27 | Workspace & Bootstrap-System | Power-Feature | Offen |
+| 27 | Workspace & Bootstrap-System | Power-Feature | Teilweise |
 | 28 | Streaming-Optimierung | Qualitat | Offen |
 | 29 | OAuth & Multi-Account-Auth | Produktivitat | Offen |
 | 30 | Plugin & Hook-System | Nice-to-have | Offen |
+| 31 | Formales Sicherheitsmodell & Secrets | Qualitat | Offen |
+| 32 | Agent Communication Protocol (ACP) | Power-Feature | Offen |
+| 33 | Computer-Use & Agent Harness | Produktivitat | Offen |
+| 34 | Community Skill Registry | Nice-to-have | Offen |
+| 35 | Performance & Test-Infrastruktur | Qualitat | Offen |
 
 ---
 
@@ -72,6 +77,11 @@
 - [ ] Kanal-spezifische Features (Reaktionen, Medien, Edits je nach Plattform)
 - [ ] DM-Pairing: Neue Nutzer muessen per Anfrage freigeschaltet werden
 - [ ] Gruppen-Chat Support (Clara reagiert nur auf @Mention in Gruppen)
+- [ ] Twitch-Kanal-Integration (Chat-Commands und Stream-Events, v2026.2.23)
+- [ ] Google Chat Integration (Spaces und DMs via Google Chat API, v2026.2.23)
+- [ ] Zalo / Zalo Personal Unterstuetzung (vietnamesischer Messenger)
+- [ ] WebChat-Widget: Einbettbarer Chat-Button fuer externe Websites
+- [ ] directPolicy: Granulare Richtlinien fuer DM-Zugang statt einfachem DM-Toggle (v2026.2.25)
 
 ---
 
@@ -175,6 +185,10 @@
 - [ ] Geraete-Pairing mit Genehmigungsworkflow (Challenge-Signing fuer Remote-Verbindungen)
 - [ ] Tailscale/VPN-Unterstuetzung als bevorzugter Remote-Zugriffsweg
 - [ ] SSH-Tunnel-Unterstuetzung als VPN-Alternative
+- [ ] Docker Namespace-Join blockiert per Standard (Sandbox-Haertung, v2026.2.25)
+- [ ] Formales Sicherheitsmodell: Dokumentiertes Bedrohungsmodell und Absicherungsschichten (v2026.2.23)
+- [ ] Tool-Richtlinien-Stack: Profile → Global → Provider → Agent → Sandbox
+- [ ] Prompt-Injection-Erkennung: Input-Bereinigung und aktive Warnmeldungen an den Nutzer
 
 ---
 
@@ -189,6 +203,9 @@
 - [ ] Kamera-Zugriff (Kamera-Bild aufnehmen und analysieren)
 - [ ] Screen-Recording (Bildschirmaufnahme starten/stoppen)
 - [ ] Audio-Transkription (Audio/Video-Dateien zu Text)
+- [ ] Talk/Gateway Provider-agnostische Konfiguration (TTS/STT unabhaengig vom LLM-Provider, v2026.2.24)
+- [ ] ElevenLabs TTS als Premium-Sprachausgabe-Option (neben edge-tts)
+- [ ] Always-on Sprachmodus: Kontinuierliche Spracherkennung mit Wake-Word-Aktivierung
 
 ---
 
@@ -223,6 +240,12 @@
 - [ ] Model-Discovery: Verfuegbare Modelle scannen und auflisten
 - [ ] Per-Agent Model-Override: Jeder Agent kann eigenen Provider/Modell nutzen
 - [ ] Vision-Modell-Routing: Bild-Anfragen automatisch an Vision-faehiges Modell
+- [ ] KIMI K2.5 Unterstuetzung (v2026.2.23)
+- [ ] Xiaomi MiMo-V2-Flash Unterstuetzung (v2026.2.23)
+- [ ] OpenAI Codex via WebSocket-first Transport (v2026.2.26)
+- [ ] AWS Bedrock Provider (Claude, Titan, Llama via AWS)
+- [ ] LM Studio Provider (lokal, OpenAI-kompatibler Endpunkt)
+- [ ] vLLM Provider (hochperformant, lokal gehostet)
 
 ---
 
@@ -294,6 +317,8 @@
 - [ ] Wildcard Allow/Deny-Listen fuer selektives Pruning nach Tool-Name
 - [ ] Reply-Automation: Konfigurierbare Ping-Pong-Antworten zwischen Sessions
 - [ ] Sub-Agent Auto-Archivierung nach konfigurierbarer Inaktivitaetsdauer
+- [ ] Mehrsprachiger Auto-Reply-Abbruch: Stopp-Erkennungswoerter in mehreren Sprachen (v2026.2.24)
+- [ ] directPolicy: Fein-granulare Zugriffssteuerung pro DM-Sender statt globalem DM-Toggle (v2026.2.25)
 
 ---
 
@@ -309,6 +334,8 @@
 - [ ] Node-Pairing: Neue Geraete sicher koppeln (Challenge-Nonce)
 - [ ] Node-Befehle: Shell-Commands auf Remote-Nodes ausfuehren
 - [ ] Android/iOS Companion-App (oder Termux/Shortcuts Bridge)
+- [ ] Android Companion: Nativer vierstufiger Onboarding-Ablauf (v2026.2.24)
+- [ ] Android Chat-Verbesserungen: Nachrichtenverlauf, Medien-Upload, Push-Benachrichtigungen (v2026.2.25)
 
 ---
 
@@ -440,15 +467,19 @@ Clara kann Claude Code (Anthropic CLI) als Coding-Backend nutzen — du sagst Cl
 
 **Prioritat:** Power-Feature
 
-- [ ] Standardisierte Workspace-Dateien: AGENTS.md (Verhaltensregeln), SOUL.md (Persona/Ton), IDENTITY.md (Name), USER.md (Nutzer-Praeferenzen), TOOLS.md (Tool-Doku)
+- [x] Standardisierte Workspace-Dateien: SOUL.md, IDENTITY.md, TOOLS.md, MEMORY.md (workspace/loader.py, data/agents/<name>/workspace/)
+- [x] BOOT.md: Optionale Startup-Checkliste beim Starten (injiziert bei jedem Start)
+- [x] Einmaliges Bootstrap-Ritual (BOOTSTRAP.md wird nach ~8 Nachrichten automatisch entfernt)
+- [x] Interaktive Ersteinrichtungs-Q&A: Auf Erststart erkannt (0 Nachrichten in DB), BOOTSTRAP.md erstellt
+- [x] TOOLS.md: Automatisch aus live SkillRegistry generiert bei jedem Start
+- [x] WorkspaceLoader: build_context(), ensure_workspace(), generate_tools_md() (workspace/loader.py)
+- [x] Config.AGENTS_WORKSPACE_DIR: Pfad per Env-Var ueberschreibbar (z.B. fuer HDD)
+- [ ] USER.md: Nutzer-Praeferenzen als eigene Workspace-Datei (aktuell in MEMORY.md integriert)
 - [ ] HEARTBEAT.md: Optionale Prufliste fuer periodische Heartbeat-Runs
-- [ ] BOOT.md: Optionale Startup-Checkliste beim Starten
-- [ ] Einmaliges Bootstrap-Ritual (BOOTSTRAP.md wird nach Ausfuehrung automatisch entfernt)
-- [ ] Interaktive Ersteinrichtungs-Q&A: Agenten-Identitaet und Nutzer-Praeferenzen sammeln
 - [ ] Multi-Profile-Unterstuetzung via Umgebungsvariable (verschiedene Konfigurationen je Kontext)
 - [ ] Workspace als Git-Repo: Backup, Versionierung, Machine-Migration per git clone
 - [ ] .gitignore-Empfehlungen fuer Credentials/Secrets im Workspace
-- [ ] Per-Datei Token-Limit und globales Token-Cap fuer injizierte Workspace-Dateien
+- [ ] Per-Datei Token-Limit und globales Token-Cap fuer injizierte Workspace-Dateien (aktuell 100 Zeilen/Datei)
 - [ ] Sandbox-Modus: Relative Pfade gegen Workspace aufloesen, absolute Pfade einschraenkbar
 
 ---
@@ -497,3 +528,98 @@ Clara kann Claude Code (Anthropic CLI) als Coding-Backend nutzen — du sagst Cl
 - [ ] Snapshot-Tool: Accessibility-Tree oder KI-generierte Seitenbeschreibungen erfassen
 - [ ] Gateway-Tool: Gateway-Prozess via Tool neu starten / aktualisieren
 - [ ] Plugin-Marketplace: Skills/Hooks aus Community-Repository installieren (clawhub-Aequivalent)
+
+---
+
+## Phase 31 - Formales Sicherheitsmodell & Externe Secrets-Verwaltung
+
+**Prioritat:** Qualitat
+**Inspiriert von:** OpenClaw v2026.2.23 (34 Security-Commits) + v2026.2.26 (External Secrets)
+
+- [ ] Externes Secrets-Management: Secrets aus Vault, Env-Variablen oder Datei-Providern laden
+- [ ] Secrets-Schicht-System: Lokale Overrides ueberschreiben globale Defaults (keine Hardcoded-Werte)
+- [ ] secrets.json mit strukturierter Platzhalter-Validierung (Zod-Schema-Aequivalent fuer Python: Pydantic)
+- [ ] Formales Sicherheitsmodell: Dokumentiertes Bedrohungsmodell (STRIDE) und Absicherungsschichten
+- [ ] Docker-Sandbox-Isolation: Tool-Ausfuehrung in isolierten Containern mit konfigurierbaren Scopes
+- [ ] Tool-Richtlinien-Stack: Profile → Global → Provider → Agent → Sandbox (5-Ebenen-Vererbung)
+- [ ] Prompt-Injection-Abwehr: Eingabe-Bereinigung, Sandbox-Grenzen, Nutzerwarnung bei Verdacht
+- [ ] Geraete-Trust-Levels: Vertrauensstufen (Owner, Trusted, Restricted, Blocked) fuer gekoppelte Nodes
+- [ ] Secret-Rotation: API-Keys automatisch erneuern und alte invalidieren
+- [ ] Sensitive-Data-Redaction: Secrets aus Logs und Tool-Outputs herausfiltern
+
+---
+
+## Phase 32 - Agent Communication Protocol (ACP)
+
+**Prioritat:** Power-Feature
+**Inspiriert von:** OpenClaw v2026.2.26 (ACP/Thread-bound Agents als First-Class Runtimes)
+
+- [ ] ACP-Runtime: Thread-gebundene Agenten als vollwertige, isolierte Laufzeitumgebung
+- [ ] ACP-Threads: Strukturierte Message-Threads fuer Agent-zu-Agent-Kommunikation
+- [ ] CLI Agent-Binding: `clara agent bind <channelId> <agentId>` und `unbind` Befehle
+- [ ] ACP-Schema-Validierung: Pydantic-Schema fuer alle ACP-Nachrichten (keine freien Dicts)
+- [ ] ACP-Event-Stream: Echtzeit-Updates fuer Agent-Zustandsaenderungen via WebSocket
+- [ ] Thread-Persistenz: ACP-Threads in DB speichern und nach Neustart wiederherstellen
+- [ ] Thread-Isolation: Jeder Thread hat eigenen Kontext, kein Kontext-Leak zwischen Threads
+- [ ] ACP-Broadcast: Eine Nachricht an mehrere Agenten gleichzeitig senden
+- [ ] ACP-Routing: Eingehende Nachrichten automatisch an den zustaendigen Thread-Agenten leiten
+- [ ] Thread-Archivierung: Abgeschlossene Threads komprimieren und langfristig aufbewahren
+
+---
+
+## Phase 33 - Computer-Use & Agent Harness
+
+**Prioritat:** Produktivitat
+**Inspiriert von:** OpenClaw VISION.md (Computer-Use und Agent Harness als naechste Prioritaet)
+
+- [ ] Computer-Use Skill: Maus- und Tastatur-Steuerung via pyautogui/pynput
+- [ ] Screen-Understanding: Aktuelle Bildschirminhalte analysieren und strukturiert beschreiben
+- [ ] Application-Launcher: Anwendungen starten, Fenster verwalten, Fokus setzen
+- [ ] Clipboard-Pipeline: Bidirektionaler Clipboard-Workflow (Lesen → KI-Verarbeitung → Schreiben)
+- [ ] Accessibility-Tree Capture: UI-Elemente per Accessibility-API erkennen (pywinauto/AT-SPI)
+- [ ] Agent-Harness: Strukturierter Ausfuehrungsrahmen fuer komplexe mehrstufige Desktop-Aufgaben
+- [ ] Loop-Safe Execution: Automatische Loop-Detection mit konfigurierbarem Abbruch nach N Iterationen
+- [ ] Human-in-the-Loop: Bestaetigungsdialoge fuer riskante Desktop-Aktionen (Datei loeschen etc.)
+- [ ] Action-Replay: Aufgezeichnete Aktionssequenzen wiederholen (Makro-Recorder)
+- [ ] Cross-Platform-Support: Windows (pyautogui), Linux (xdotool), macOS (AppleScript/cliclick)
+
+---
+
+## Phase 34 - Community Skill Registry (Clara Skills Hub)
+
+**Prioritat:** Nice-to-have
+**Inspiriert von:** OpenClaw ClawHub (5.700+ Community-Skills per Feb 2026)
+
+- [ ] Skill-Paketformat: Standardisiertes Format (name, version, author, dependencies, execute)
+- [ ] `clara skills install <name>`: Skill aus Registry per Name installieren
+- [ ] `clara skills list`: Verfuegbare Community-Skills mit Beschreibung und Bewertung durchsuchen
+- [ ] `clara skills publish`: Eigene Skills als Paket veroeffentlichen
+- [ ] `clara skills update`: Alle installierten Skills auf neueste Version aktualisieren
+- [ ] `clara skills remove <name>`: Skill deinstallieren und Dateien bereinigen
+- [ ] Skill-Signierung: Kryptographische Signatur (Ed25519) fuer vertrauenswuerdige Skills
+- [ ] Skill-Sandboxing: Community-Skills in isolierter Umgebung (venv oder Docker) ausfuehren
+- [ ] Skill-Versionierung: Kompatibilitaets-Matrix (Skill-Version vs. Clara-Version)
+- [ ] Registry-Mirror: Lokaler Cache der Registry fuer Offline-Betrieb
+- [ ] Skill-Bewertungen und Reviews: Community-Feedback fuer Qualitaetssicherung
+- [ ] Auto-Discovery: Clara erkennt lokal installierte Skill-Pakete automatisch beim Start
+
+---
+
+## Phase 35 - Performance & Test-Infrastruktur
+
+**Prioritat:** Qualitat
+**Inspiriert von:** OpenClaw VISION.md (Performance und Test Infrastructure als naechste Prioritaet)
+
+- [ ] Test-Suite: pytest-basierte Unit- und Integrationstests fuer alle Core-Module
+- [ ] Coverage-Tracking: Mindest-Coverage-Schwelle 70% (pytest-cov), Report bei jedem Push
+- [ ] CI/CD Pipeline: GitHub Actions fuer automatische Tests, Linting und Type-Checking bei Push/PR
+- [ ] Load-Testing: Stress-Tests fuer WebSocket-Verbindungen und LLM-Pipeline (locust)
+- [ ] Performance-Profiling: Latenz-Metriken pro Skill und LLM-Call (py-spy / cProfile)
+- [ ] Memory-Leak-Detection: Async-Ressourcen-Tracking mit tracemalloc
+- [ ] Benchmark-Suite: Standardisierte Performance-Baselines (Response-Zeit, Token/s, Tool-Latenz)
+- [ ] Type-Checking: mypy oder pyright fuer statische Typ-Sicherheit im gesamten Codebase
+- [ ] Linting: ruff als schneller Ersatz fuer flake8/pylint
+- [ ] Pre-Commit Hooks: Automatische Formatierung (black/ruff) und Tests vor jedem Commit
+- [ ] Dependency-Scanning: Automatische Pruefung auf bekannte Sicherheitsluecken in Abhaengigkeiten
+- [ ] Canary-Releases: Schrittweise Rollouts neuer Versionen an Subset der Instanzen
+

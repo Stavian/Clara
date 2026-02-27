@@ -7,6 +7,7 @@ from config import Config
 from memory.context_builder import build_memory_context
 from memory.fact_extractor import extract_facts
 from services.tts_service import generate_tts
+from workspace.loader import WorkspaceLoader
 
 logger = logging.getLogger(__name__)
 
@@ -42,12 +43,13 @@ def _strip_think(text: str) -> str:
 class ChatEngine:
     """Channel-agnostic chat engine: LLM calls, tool execution, streaming."""
 
-    def __init__(self, ollama, db, skills, agent_router, system_prompt: str):
+    def __init__(self, ollama, db, skills, agent_router, system_prompt: str, workspace_loader: WorkspaceLoader | None = None):
         self.ollama = ollama
         self.db = db
         self.skills = skills
         self.agent_router = agent_router
         self.system_prompt = system_prompt
+        self.workspace_loader = workspace_loader
 
     async def handle_message(
         self,
@@ -85,7 +87,16 @@ class ChatEngine:
 
         history = await self.db.get_history(session_id, limit=Config.MAX_CONVERSATION_HISTORY)
         memory_context = await build_memory_context(self.db)
-        system_content = self.system_prompt + memory_context
+
+        # Inject workspace context (IDENTITY.md, SOUL.md, TOOLS.md, MEMORY.md, BOOT.md)
+        workspace_ctx = ""
+        if self.workspace_loader:
+            workspace_ctx = self.workspace_loader.build_context("general")
+            if self.workspace_loader.has_bootstrap("general"):
+                bootstrap_txt = self.workspace_loader.read_bootstrap("general")
+                workspace_ctx += f"\n\n## Erste Inbetriebnahme\n{bootstrap_txt}"
+
+        system_content = self.system_prompt + workspace_ctx + memory_context
         messages = [{"role": "system", "content": system_content}]
         messages.extend(history)
 
@@ -253,6 +264,12 @@ class ChatEngine:
             await channel.send_message(assistant_text)
 
         await self.db.save_message(session_id, "assistant", assistant_text)
+
+        # Auto-complete bootstrap after enough messages have been exchanged
+        if self.workspace_loader and self.workspace_loader.has_bootstrap("general"):
+            total = await self.db.get_total_message_count()
+            if total >= 8:
+                self.workspace_loader.complete_bootstrap("general")
 
         asyncio.create_task(
             extract_facts(self.ollama, self.db, display_text, assistant_text)

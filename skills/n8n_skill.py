@@ -122,6 +122,14 @@ class N8nSkill(BaseSkill):
         input_data: str = "",
         **kwargs,
     ) -> str:
+        # Workflow creation is only allowed through the workflow_builder agent
+        if action in ("create_tool", "create") and kwargs.get("_agent") != "workflow_builder":
+            return (
+                "Workflow-Erstellung ist nur ueber den workflow_builder Agenten moeglich. "
+                "Bitte jetzt delegate_to_agent aufrufen: agent='workflow_builder', "
+                "task='[Aufgabenbeschreibung des Nutzers]'"
+            )
+
         if not Config.N8N_BASE_URL or not Config.N8N_API_KEY:
             return (
                 "n8n ist nicht konfiguriert. "

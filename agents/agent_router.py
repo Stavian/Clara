@@ -174,7 +174,7 @@ class AgentRouter:
                         "args": tool_args,
                     })
 
-                    result = await self.skills.execute(tool_name, **tool_args)
+                    result = await self.skills.execute(tool_name, _agent=agent_name, **tool_args)
 
                     # Extract images from tool result
                     img_matches = re.findall(

@@ -632,7 +632,7 @@ function renderMessage(text) {
     s = s.replace(/`([^`\n]+)`/g, (_, code) => {
         const idx = inlineCodes.length;
         inlineCodes.push(code);
-        return `%%INLINE_${idx}%%`;
+        return `%%IC${idx}%%`;
     });
 
     // 3. HTML-escape remaining text
@@ -717,7 +717,7 @@ function renderMessage(text) {
     s = s.replace(/~~(.+?)~~/g, '<s>$1</s>');
 
     // 7. Restore inline code
-    s = s.replace(/%%INLINE_(\d+)%%/g, (_, i) =>
+    s = s.replace(/%%IC(\d+)%%/g, (_, i) =>
         `<code class="inline-code">${escapeHtml(inlineCodes[parseInt(i)])}</code>`);
 
     // 8. Restore fenced code blocks

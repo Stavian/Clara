@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 _THINK_RE = re.compile(r"<think>[\s\S]*?</think>\s*", re.IGNORECASE)
 _TOOL_CALL_RE = re.compile(r"<tool_call>[\s\S]*?</tool_call>\s*", re.IGNORECASE)
 
+# Auto-route workflow creation requests to workflow_builder without LLM tool selection
+_WORKFLOW_CREATE_RE = re.compile(
+    r"\b(erstell|erstelle|erstellen|baue|bau|mach|mache|anlegen|generier|generiere|create|build|make)\b"
+    r".*\b(workflow|automatisierung|automation|n8n.?tool|n8n.?workflow)\b"
+    r"|\b(neuen?\s+workflow|neue\s+automatisierung|n8n\s+workflow|n8n\s+automatisierung)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 def _strip_think(text: str) -> str:
     """Remove <think>...</think>, <tool_call>...</tool_call> blocks and model filler from output."""
@@ -106,6 +114,10 @@ class ChatEngine:
                 "content": user_content,
                 "images": [image_b64],
             }
+
+        # Auto-route workflow creation to workflow_builder — no LLM tool selection needed
+        if not agent_override and self.agent_router and _WORKFLOW_CREATE_RE.search(user_message):
+            agent_override = "workflow_builder"
 
         # Direct agent mode: bypass normal LLM + tool loop
         if agent_override and agent_override != "general" and self.agent_router:

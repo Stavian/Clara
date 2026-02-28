@@ -1,9 +1,8 @@
 [Unit]
 Description=Clara AI Assistant
 Documentation=https://github.com/marlonarndt/clara
-After=network-online.target local-fs.target
+After=network-online.target
 Wants=network-online.target
-RequiresMountsFor=/mnt/storage
 
 [Service]
 Type=simple

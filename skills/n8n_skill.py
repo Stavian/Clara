@@ -159,7 +159,16 @@ class N8nSkill(BaseSkill):
         payload["active"] = False
 
         async with session.post(self._url("workflows"), json=payload) as resp:
-            resp.raise_for_status()
+            if not resp.ok:
+                body = await resp.text()
+                return (
+                    f"n8n API Fehler {resp.status} beim Erstellen des Workflows.\n"
+                    f"Details: {body[:500]}\n\n"
+                    f"Haeufige Ursachen:\n"
+                    f"- Falscher Node-Typ (muss 'n8n-nodes-base.TYPE' sein, nicht 'trigger')\n"
+                    f"- Fehlende Pflichtfelder in Node-Parametern\n"
+                    f"- Ungueltige Verbindungen zwischen Nodes"
+                )
             created = await resp.json()
 
         wf_id = created.get("id", "?")

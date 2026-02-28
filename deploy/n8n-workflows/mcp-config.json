@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "n8n": {
+      "command": "npx",
+      "args": ["-y", "n8n-mcp"],
+      "env": {
+        "N8N_API_URL": "http://192.168.178.130:5678/api/v1",
+        "N8N_API_KEY": "${N8N_API_KEY}"
+      }
+    }
+  }
+}

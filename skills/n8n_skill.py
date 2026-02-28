@@ -212,9 +212,13 @@ class N8nSkill(BaseSkill):
         wf_name = data.get("name", "")
         wf_url = data.get("url", f"{Config.N8N_BASE_URL}/workflow/{wf_id}" if wf_id else "")
         error = data.get("error", "")
+        message = data.get("message", "")
 
         if error:
             return f"Creator-Workflow meldet Fehler: {error}"
+        if not wf_id and message:
+            # Async pattern: n8n acknowledged and is working in the background
+            return f"n8n: {message}"
         if not wf_id:
             return f"Creator-Webhook Antwort (unbekanntes Format):\n{body[:400]}"
 

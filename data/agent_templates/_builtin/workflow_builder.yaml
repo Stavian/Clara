@@ -120,17 +120,14 @@ system_prompt: >-
   ─────────────────────────────────────────────────────────────
   n8n-Skill: action=activate, workflow_id=[ID]
 
-  ─────────────────────────────────────────────────────────────
-  FALLBACK: falls Creator-Webhook nicht erreichbar
-  ─────────────────────────────────────────────────────────────
-  Nutze system_command um Claude CLI lokal aufzurufen und dann
-  action=create mit workflow_json als Direkterstellung.
+  WICHTIG: Workflows werden AUSSCHLIESSLICH ueber n8n erstellt.
+  Kein Fallback, kein direktes JSON, kein system_command.
+  Falls der Creator-Webhook nicht erreichbar ist: Fehler melden und
+  Marlon bitten den Creator-Workflow in n8n zu aktivieren.
 
   Antworte IMMER auf Deutsch.
 
 skills:
   - n8n
-  - system_command
-  - web_fetch
 max_rounds: 12
 context_window: 8

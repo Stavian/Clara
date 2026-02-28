@@ -53,6 +53,11 @@ class Config:
     # Per-agent workspace directories (OpenClaw-style: IDENTITY.md, SOUL.md, TOOLS.md, ...)
     AGENTS_WORKSPACE_DIR: Path = Path(os.getenv("AGENTS_WORKSPACE_DIR", str(BASE_DIR / "data" / "agents")))
 
+    # n8n workflow automation (optional — requires separate n8n LXC container)
+    N8N_ENABLED: bool = os.getenv("N8N_ENABLED", "false").lower() == "true"
+    N8N_BASE_URL: str = os.getenv("N8N_BASE_URL", "http://192.168.178.130:5678")
+    N8N_API_KEY: str = os.getenv("N8N_API_KEY", "")
+
     # Google Calendar (optional)
     GOOGLE_CREDENTIALS_PATH: Path = BASE_DIR / "data" / "credentials.json"
     GOOGLE_TOKEN_PATH: Path = BASE_DIR / "data" / "google_token.json"

@@ -62,6 +62,7 @@ from skills.clipboard import ClipboardSkill
 from skills.pdf_reader import PDFReaderSkill
 from skills.calculator import CalculatorSkill
 from skills.calendar_manager import CalendarManagerSkill
+from skills.n8n_skill import N8nSkill
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
@@ -208,6 +209,11 @@ async def lifespan(app: FastAPI):
     skills.register(PDFReaderSkill())
     skills.register(CalculatorSkill())
     skills.register(CalendarManagerSkill())
+
+    # n8n integration (optional — only if N8N_ENABLED=true in .env)
+    if Config.N8N_ENABLED:
+        skills.register(N8nSkill())
+        logging.info(f"n8n integration enabled: {Config.N8N_BASE_URL}")
 
     # Initialize Phase 11 engines (need skills registry)
     script_engine = ScriptEngine(skills)

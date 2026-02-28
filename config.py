@@ -57,6 +57,12 @@ class Config:
     N8N_ENABLED: bool = os.getenv("N8N_ENABLED", "false").lower() == "true"
     N8N_BASE_URL: str = os.getenv("N8N_BASE_URL", "http://192.168.178.130:5678")
     N8N_API_KEY: str = os.getenv("N8N_API_KEY", "")
+    # Webhook of the n8n "create tool" workflow — receives {description, requirements}
+    # Production: .../webhook/n8n_create_clara_tool  |  Test: .../webhook-test/n8n_create_clara_tool
+    N8N_CREATOR_WEBHOOK: str = os.getenv(
+        "N8N_CREATOR_WEBHOOK",
+        "http://192.168.178.130:5678/webhook-test/n8n_create_clara_tool",
+    )
 
     # Google Calendar (optional)
     GOOGLE_CREDENTIALS_PATH: Path = BASE_DIR / "data" / "credentials.json"

@@ -40,7 +40,10 @@ class N8nSkill(BaseSkill):
                     "type": "string",
                     "enum": [
                         "list",
+                        "list_clara_tools",
                         "create",
+                        "create_tool",
+                        "run_tool",
                         "activate",
                         "deactivate",
                         "delete",
@@ -49,7 +52,10 @@ class N8nSkill(BaseSkill):
                     ],
                     "description": (
                         "Aktion: list=alle Workflows anzeigen, "
+                        "list_clara_tools=nur Clara-Tools (Tag 'clara') anzeigen, "
                         "create=neuen Workflow erstellen (workflow_json erforderlich), "
+                        "create_tool=neuen Workflow aus Beschreibung erstellen und als Clara-Tool taggen (description erforderlich), "
+                        "run_tool=Clara-Tool per Name ausfuehren (workflow_name erforderlich, input_data optional), "
                         "activate/deactivate=Workflow ein-/ausschalten (workflow_id), "
                         "delete=Workflow loeschen (workflow_id), "
                         "execute=Workflow manuell ausfuehren (workflow_id), "
@@ -71,6 +77,35 @@ class N8nSkill(BaseSkill):
                         "Muss 'name' und 'nodes' enthalten."
                     ),
                 },
+                "description": {
+                    "type": "string",
+                    "description": (
+                        "Natuerlichsprachliche Beschreibung des gewuenschten Workflows auf Englisch "
+                        "(fuer create_tool). Beispiel: 'Every weekday at 9 AM fetch weather and post to Discord'."
+                    ),
+                },
+                "requirements": {
+                    "type": "string",
+                    "description": (
+                        "Optionale technische Anforderungen fuer create_tool: "
+                        "z.B. Webhook-Pfade, API-URLs, Feldnamen, Zeitplaene."
+                    ),
+                },
+                "workflow_name": {
+                    "type": "string",
+                    "description": (
+                        "Name (oder Teil des Namens) eines Clara-Tools fuer run_tool. "
+                        "Gross-/Kleinschreibung egal. Beispiel: 'Wetter-Check'."
+                    ),
+                },
+                "input_data": {
+                    "type": "string",
+                    "description": (
+                        "Optionaler JSON-String mit Input-Daten fuer run_tool, "
+                        "falls der Workflow einen Webhook-Trigger hat. "
+                        "Beispiel: '{\"message\": \"Hallo\", \"channel\": \"general\"}'."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -81,6 +116,10 @@ class N8nSkill(BaseSkill):
         workflow_id: str = "",
         execution_id: str = "",
         workflow_json: str = "",
+        description: str = "",
+        requirements: str = "",
+        workflow_name: str = "",
+        input_data: str = "",
         **kwargs,
     ) -> str:
         if not Config.N8N_BASE_URL or not Config.N8N_API_KEY:
@@ -89,6 +128,10 @@ class N8nSkill(BaseSkill):
                 "Bitte N8N_BASE_URL und N8N_API_KEY in der .env setzen."
             )
 
+        # create_tool uses its own session (webhook, no API key header needed)
+        if action == "create_tool":
+            return await self._create_tool(description, requirements)
+
         try:
             timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(
@@ -96,6 +139,10 @@ class N8nSkill(BaseSkill):
             ) as session:
                 if action == "list":
                     return await self._list(session)
+                elif action == "list_clara_tools":
+                    return await self._list_clara_tools(session)
+                elif action == "run_tool":
+                    return await self._run_tool(session, workflow_name, input_data)
                 elif action == "create":
                     return await self._create(session, workflow_json)
                 elif action == "activate":
@@ -122,6 +169,214 @@ class N8nSkill(BaseSkill):
 
     # ── Private helpers ────────────────────────────────────────────────────────
 
+    async def _create_tool(self, description: str, requirements: str) -> str:
+        """POST to the n8n creator webhook — workflow is built and deployed by n8n itself."""
+        if not description.strip():
+            return "Fehler: 'description' ist erforderlich fuer create_tool."
+
+        webhook_url = Config.N8N_CREATOR_WEBHOOK
+        if not webhook_url:
+            return (
+                "N8N_CREATOR_WEBHOOK ist nicht konfiguriert. "
+                "Bitte die URL des Creator-Workflows in der .env setzen."
+            )
+
+        payload: dict = {"description": description.strip()}
+        if requirements.strip():
+            payload["requirements"] = requirements.strip()
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=120)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(webhook_url, json=payload) as resp:
+                    body = await resp.text()
+                    if not resp.ok:
+                        return (
+                            f"Creator-Webhook Fehler {resp.status}.\n"
+                            f"URL: {webhook_url}\n"
+                            f"Details: {body[:400]}"
+                        )
+                    try:
+                        data = json.loads(body)
+                    except json.JSONDecodeError:
+                        return f"Creator-Webhook Antwort (kein JSON):\n{body[:600]}"
+
+        except aiohttp.ClientConnectorError:
+            return (
+                f"Verbindung zum Creator-Webhook fehlgeschlagen.\n"
+                f"URL: {webhook_url}\n"
+                "Ist der Workflow in n8n aktiv?"
+            )
+
+        wf_id = data.get("id", "")
+        wf_name = data.get("name", "")
+        wf_url = data.get("url", f"{Config.N8N_BASE_URL}/workflow/{wf_id}" if wf_id else "")
+        error = data.get("error", "")
+
+        if error:
+            return f"Creator-Workflow meldet Fehler: {error}"
+        if not wf_id:
+            return f"Creator-Webhook Antwort (unbekanntes Format):\n{body[:400]}"
+
+        # Automatically tag the new workflow with 'clara' so it's auto-discovered
+        tag_ok = False
+        try:
+            api_timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(
+                headers=self._headers(), timeout=api_timeout
+            ) as api_session:
+                tag_ok = await self._assign_clara_tag(api_session, wf_id)
+        except Exception as _e:
+            logger.warning("Could not assign 'clara' tag to workflow %s: %s", wf_id, _e)
+
+        tag_note = " | Tag 'clara' zugewiesen" if tag_ok else " | Tag konnte nicht zugewiesen werden — bitte manuell in n8n setzen"
+        return (
+            f"Workflow **{wf_name}** erstellt (ID: `{wf_id}`).{tag_note}\n"
+            f"Status: inaktiv — bitte in n8n pruefen und aktivieren:\n"
+            f"  n8n-Skill: action=activate, workflow_id={wf_id}\n"
+            f"  oder direkt: {wf_url}\n"
+            f"Nach dem Aktivieren ist der Workflow als Clara-Tool verfuegbar: action=run_tool, workflow_name='{wf_name}'"
+        )
+
+    async def _get_or_create_clara_tag(self, session: aiohttp.ClientSession) -> str | None:
+        """Ensure a 'clara' tag exists in n8n and return its ID."""
+        async with session.get(self._url("tags")) as resp:
+            if not resp.ok:
+                return None
+            data = await resp.json()
+        tags = data.get("data", data) if isinstance(data, dict) else data
+        for tag in tags:
+            if tag.get("name", "").lower() == "clara":
+                return tag["id"]
+        # Create the tag
+        async with session.post(self._url("tags"), json={"name": "clara"}) as resp:
+            if not resp.ok:
+                return None
+            created = await resp.json()
+        return created.get("id")
+
+    async def _assign_clara_tag(self, session: aiohttp.ClientSession, workflow_id: str) -> bool:
+        """Tag a workflow with 'clara'. Returns True on success."""
+        tag_id = await self._get_or_create_clara_tag(session)
+        if not tag_id:
+            return False
+        async with session.put(
+            self._url(f"workflows/{workflow_id}/tags"),
+            json=[{"id": tag_id}],
+        ) as resp:
+            return resp.ok
+
+    async def _fetch_clara_workflows(self, session: aiohttp.ClientSession) -> list[dict]:
+        """Return all active workflows tagged 'clara'."""
+        async with session.get(self._url("workflows")) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+        return [
+            w for w in data.get("data", [])
+            if any(t.get("name", "").lower() == "clara" for t in w.get("tags", []))
+        ]
+
+    async def _list_clara_tools(self, session: aiohttp.ClientSession) -> str:
+        workflows = await self._fetch_clara_workflows(session)
+        if not workflows:
+            return (
+                "Keine Clara-Tools vorhanden. "
+                "Erstelle einen mit: action=create_tool, description='...'"
+            )
+        lines = [f"Clara-Tools ({len(workflows)} gesamt, Tag: 'clara'):\n"]
+        for w in workflows:
+            status = "aktiv" if w.get("active") else "inaktiv"
+            trigger = "manuell"
+            for node in w.get("nodes", []):
+                t = node.get("type", "")
+                if "scheduleTrigger" in t:
+                    trigger = "zeitgesteuert"
+                    break
+                if "webhook" in t.lower():
+                    trigger = "webhook"
+                    break
+            lines.append(
+                f"- **{w['name']}** (ID: `{w['id']}`) — {status} | Trigger: {trigger}"
+            )
+        lines.append(
+            "\nAufruf: action=run_tool, workflow_name='<Name>' [, input_data='{...}']"
+        )
+        return "\n".join(lines)
+
+    async def _run_tool(
+        self,
+        session: aiohttp.ClientSession,
+        workflow_name: str,
+        input_data_str: str,
+    ) -> str:
+        if not workflow_name.strip():
+            return "Fehler: 'workflow_name' ist erforderlich fuer run_tool."
+
+        workflows = await self._fetch_clara_workflows(session)
+        name_lower = workflow_name.strip().lower()
+        matches = [w for w in workflows if name_lower in w.get("name", "").lower()]
+
+        if not matches:
+            return (
+                f"Kein Clara-Tool mit Name '{workflow_name}' gefunden.\n"
+                "Verfuegbare Tools anzeigen: action=list_clara_tools"
+            )
+        if len(matches) > 1:
+            names = ", ".join(f"'{w['name']}'" for w in matches)
+            return f"Mehrdeutig — {len(matches)} Treffer: {names}. Bitte genaueren Namen angeben."
+
+        wf = matches[0]
+        wf_id = wf["id"]
+        wf_name = wf["name"]
+
+        if not wf.get("active"):
+            return (
+                f"Workflow **{wf_name}** ist inaktiv und kann nicht ausgefuehrt werden.\n"
+                f"Aktivieren: action=activate, workflow_id={wf_id}"
+            )
+
+        # Check for webhook trigger node
+        webhook_node = next(
+            (n for n in wf.get("nodes", []) if "webhook" in n.get("type", "").lower()),
+            None,
+        )
+
+        if webhook_node:
+            webhook_path = webhook_node.get("parameters", {}).get("path", "")
+            if not webhook_path:
+                return f"Webhook-Trigger in '{wf_name}' hat keinen 'path'-Parameter."
+            webhook_url = f"{Config.N8N_BASE_URL.rstrip('/')}/webhook/{webhook_path}"
+            try:
+                payload = json.loads(input_data_str) if input_data_str.strip() else {}
+            except json.JSONDecodeError as e:
+                return f"Fehler: input_data ist kein gueltiges JSON — {e}"
+
+            long_timeout = aiohttp.ClientTimeout(total=60)
+            async with aiohttp.ClientSession(timeout=long_timeout) as wh_session:
+                async with wh_session.post(webhook_url, json=payload) as resp:
+                    body = await resp.text()
+                    if not resp.ok:
+                        return f"Webhook-Fehler {resp.status}: {body[:300]}"
+                    try:
+                        result = json.loads(body)
+                        result_str = json.dumps(result, ensure_ascii=False, indent=2)
+                        if len(result_str) > 600:
+                            result_str = result_str[:600] + "\n... (gekuerzt)"
+                    except json.JSONDecodeError:
+                        result_str = body[:600]
+            return f"Tool **{wf_name}** ausgefuehrt (via Webhook):\n{result_str}"
+
+        # No webhook — use run API
+        async with session.post(self._url(f"workflows/{wf_id}/run"), json={}) as resp:
+            resp.raise_for_status()
+            data = await resp.json()
+        exec_id = data.get("data", {}).get("executionId", "?")
+        return (
+            f"Tool **{wf_name}** gestartet (via API).\n"
+            f"Execution-ID: `{exec_id}`\n"
+            f"Ergebnis abrufen: action=get_execution, execution_id={exec_id}"
+        )
+
     async def _list(self, session: aiohttp.ClientSession) -> str:
         async with session.get(self._url("workflows")) as resp:
             resp.raise_for_status()
@@ -136,6 +391,70 @@ class N8nSkill(BaseSkill):
             status = "aktiv" if w.get("active") else "inaktiv"
             lines.append(f"- **{w['name']}** (ID: `{w['id']}`) — {status}")
         return f"n8n-Workflows ({len(workflows)}):\n" + "\n".join(lines)
+
+    # Map of short/wrong node types → correct n8n-nodes-base.* types
+    _NODE_TYPE_MAP: dict[str, str] = {
+        "scheduler": "n8n-nodes-base.scheduleTrigger",
+        "scheduletrigger": "n8n-nodes-base.scheduleTrigger",
+        "cron": "n8n-nodes-base.scheduleTrigger",
+        "trigger": "n8n-nodes-base.manualTrigger",
+        "manualtrigger": "n8n-nodes-base.manualTrigger",
+        "webhook": "n8n-nodes-base.webhook",
+        "httprequest": "n8n-nodes-base.httpRequest",
+        "http": "n8n-nodes-base.httpRequest",
+        "set": "n8n-nodes-base.set",
+        "if": "n8n-nodes-base.if",
+        "switch": "n8n-nodes-base.switch",
+        "code": "n8n-nodes-base.code",
+        "function": "n8n-nodes-base.code",
+        "noop": "n8n-nodes-base.noOp",
+        "merge": "n8n-nodes-base.merge",
+        "discord": "n8n-nodes-base.discord",
+        "telegram": "n8n-nodes-base.telegram",
+        "slack": "n8n-nodes-base.slack",
+        "emailsend": "n8n-nodes-base.emailSend",
+        "gmail": "n8n-nodes-base.gmail",
+        "rss": "n8n-nodes-base.rssFeedRead",
+        "rssfeedread": "n8n-nodes-base.rssFeedRead",
+        "datetime": "n8n-nodes-base.dateTime",
+    }
+
+    def _sanitize_workflow(self, payload: dict) -> tuple[dict, list[str]]:
+        """Fix common LLM mistakes in workflow JSON before sending to n8n API."""
+        fixes: list[str] = []
+
+        # Ensure required top-level fields
+        if "connections" not in payload:
+            payload["connections"] = {}
+            fixes.append("connections: {} ergaenzt")
+        if "settings" not in payload:
+            payload["settings"] = {"executionOrder": "v1"}
+            fixes.append("settings: {executionOrder: v1} ergaenzt")
+        if "staticData" not in payload:
+            payload["staticData"] = None
+
+        # Fix node types
+        for node in payload.get("nodes", []):
+            raw_type = node.get("type", "")
+            if not raw_type.startswith("n8n-nodes-base.") and not raw_type.startswith("@n8n/"):
+                key = raw_type.lower().replace("-", "").replace("_", "")
+                corrected = self._NODE_TYPE_MAP.get(key)
+                if corrected:
+                    fixes.append(f"Node-Typ '{raw_type}' → '{corrected}'")
+                    node["type"] = corrected
+                else:
+                    fixes.append(f"WARNUNG: Unbekannter Node-Typ '{raw_type}' — unveraendert")
+
+            # Ensure typeVersion exists
+            if "typeVersion" not in node:
+                node["typeVersion"] = 1
+                fixes.append(f"typeVersion=1 fuer Node '{node.get('name', '?')}' ergaenzt")
+
+            # Ensure parameters exists
+            if "parameters" not in node:
+                node["parameters"] = {}
+
+        return payload, fixes
 
     async def _create(self, session: aiohttp.ClientSession, workflow_json: str) -> str:
         if not workflow_json.strip():
@@ -154,6 +473,11 @@ class N8nSkill(BaseSkill):
 
         # Strip 'id' so n8n assigns a fresh one
         payload.pop("id", None)
+
+        # Auto-fix common LLM mistakes before sending to n8n
+        payload, fixes = self._sanitize_workflow(payload)
+        if fixes:
+            logger.info("n8n_skill: sanitized workflow — %s", "; ".join(fixes))
 
         # Newly created workflows start inactive — user activates after review
         payload["active"] = False

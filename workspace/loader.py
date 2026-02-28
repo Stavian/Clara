@@ -5,10 +5,12 @@ logger = logging.getLogger(__name__)
 
 # Files injected into the agent system prompt, in order.
 # TOOLS.md is regenerated from the live skill registry at every startup.
+# N8N_TOOLS.md is regenerated from n8n (tag: "clara") at every startup when N8N_ENABLED=true.
 _CONTEXT_FILES = [
     ("IDENTITY.md", "Identitaet"),
     ("SOUL.md", "Persoenlichkeit"),
     ("TOOLS.md", "Verfuegbare Tools"),
+    ("N8N_TOOLS.md", "n8n Clara-Tools"),
     ("MEMORY.md", "Agenten-Notizen"),
     ("BOOT.md", "Startup-Checkliste"),
 ]
@@ -78,6 +80,54 @@ class WorkspaceLoader:
         path = ws / "TOOLS.md"
         path.write_text("\n".join(lines), "utf-8")
         logger.info(f"Generated TOOLS.md for agent '{agent_name}' ({len(skills)} skills)")
+
+    def generate_n8n_tools_md(self, agent_name: str, workflows: list[dict]) -> None:
+        """Write N8N_TOOLS.md from a list of n8n workflows tagged 'clara'.
+
+        Args:
+            agent_name: Target agent workspace.
+            workflows: List of n8n workflow dicts (from GET /api/v1/workflows).
+                       Only active workflows are included.
+        """
+        ws = self.workspace_dir(agent_name)
+        ws.mkdir(parents=True, exist_ok=True)
+        path = ws / "N8N_TOOLS.md"
+
+        active = [w for w in workflows if w.get("active")]
+        if not active:
+            # Write empty file so it doesn't inject stale content
+            path.write_text("", "utf-8")
+            return
+
+        lines = [
+            "# n8n Clara-Tools",
+            "",
+            "Diese n8n-Workflows sind speziell fuer Clara erstellt (Tag: 'clara').",
+            "Aufruf: n8n Skill, action=run_tool, workflow_name='<Name>'",
+            "Mit optionalem Input: zusaetzlich input_data='{\"key\": \"value\"}'",
+            "",
+        ]
+        for w in active:
+            wf_id = w.get("id", "?")
+            name = w.get("name", "?")
+            # Detect trigger type from nodes
+            trigger = "manuell"
+            for node in w.get("nodes", []):
+                t = node.get("type", "")
+                if "scheduleTrigger" in t or "cron" in t.lower():
+                    trigger = "zeitgesteuert (kein Input noetig)"
+                    break
+                if "webhook" in t.lower():
+                    trigger = "webhook (akzeptiert JSON input_data)"
+                    break
+            lines.append(f"## {name}")
+            lines.append(f"**ID**: `{wf_id}` | **Trigger**: {trigger}")
+            lines.append("")
+
+        path.write_text("\n".join(lines), "utf-8")
+        logger.info(
+            f"Generated N8N_TOOLS.md for agent '{agent_name}' ({len(active)} clara workflows)"
+        )
 
     # ------------------------------------------------------------------
     # Context building

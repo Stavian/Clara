@@ -211,9 +211,31 @@ async def lifespan(app: FastAPI):
     skills.register(CalendarManagerSkill())
 
     # n8n integration (optional — only if N8N_ENABLED=true in .env)
+    _n8n_clara_workflows: list[dict] = []
     if Config.N8N_ENABLED:
         skills.register(N8nSkill())
         logging.info(f"n8n integration enabled: {Config.N8N_BASE_URL}")
+        # Pre-fetch Clara-tagged workflows for workspace injection
+        try:
+            import aiohttp as _aiohttp
+            _headers = {"X-N8N-API-KEY": Config.N8N_API_KEY}
+            _url = f"{Config.N8N_BASE_URL.rstrip('/')}/api/v1/workflows"
+            async with _aiohttp.ClientSession(headers=_headers) as _s:
+                async with _s.get(_url, timeout=_aiohttp.ClientTimeout(total=10)) as _r:
+                    if _r.ok:
+                        _data = await _r.json()
+                        _n8n_clara_workflows = [
+                            w for w in _data.get("data", [])
+                            if any(
+                                t.get("name", "").lower() == "clara"
+                                for t in w.get("tags", [])
+                            )
+                        ]
+                        logging.info(
+                            f"n8n: {len(_n8n_clara_workflows)} Clara-tagged workflows found"
+                        )
+        except Exception as _e:
+            logging.warning(f"n8n startup fetch failed (non-fatal): {_e}")
 
     # Initialize Phase 11 engines (need skills registry)
     script_engine = ScriptEngine(skills)
@@ -251,6 +273,8 @@ async def lifespan(app: FastAPI):
         }))
         # Regenerate TOOLS.md from live skill registry every startup
         workspace_loader.generate_tools_md(_agent_name, skills.get_all())
+        # Regenerate N8N_TOOLS.md from Clara-tagged n8n workflows (empty if n8n disabled)
+        workspace_loader.generate_n8n_tools_md(_agent_name, _n8n_clara_workflows)
 
     # Bootstrap: create BOOTSTRAP.md only on a completely fresh install (0 messages)
     total_messages = await db.get_total_message_count()

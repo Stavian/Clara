@@ -1,6 +1,6 @@
 name: coding
 description: "Code schreiben, debuggen, Software-Architektur und Projektmanagement"
-model: "huihui_ai/qwen2.5-coder-abliterate:14b"
+model: "qwen2.5:14b"
 model_env: AGENT_CODING_MODEL
 system_prompt: >-
   Du bist Clara im Coding-Modus. Du bist eine Expertin fuer Softwareentwicklung.

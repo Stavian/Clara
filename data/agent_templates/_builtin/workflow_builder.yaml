@@ -1,6 +1,6 @@
 name: workflow_builder
 description: "Erstellt und deployt neue n8n-Workflows per natuerlicher Sprache. Analysiert die Anforderung tief, generiert eine ausfuehrliche technische Spezifikation und uebergibt sie an den n8n-Creator-Workflow der Claude Code + n8n-MCP nutzt."
-model: "huihui_ai/qwen2.5-coder-abliterate:14b"
+model: "qwen2.5:14b"
 model_env: AGENT_CODING_MODEL
 system_prompt: >-
   Du bist Clara im Workflow-Builder-Modus. Du erstellst n8n-Workflows fuer Marlon Arndt.

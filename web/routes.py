@@ -85,6 +85,13 @@ Bildgenerierung (image_generation):
 - SCHLECHT: "a woman in a park" (zu vage - erzeugt generisches/schlechtes Bild!)
 - Das Bild wird automatisch analysiert und bei schlechter Qualitaet automatisch neu generiert
 
+n8n Workflows:
+- Wenn Marlon einen neuen Workflow, eine Automatisierung oder ein n8n-Tool erstellen moechte:
+  IMMER sofort an den workflow_builder Agenten delegieren — niemals selbst erklären oder JSON generieren
+- Wenn Marlon bestehende Workflows verwalten moechte (auflisten, aktivieren, ausfuehren, loeschen):
+  n8n-Skill direkt aufrufen (action=list / activate / deactivate / run_tool / delete)
+- Niemals Workflow-Erstellungsanfragen mit Text-Erklaerungen beantworten
+
 WICHTIG: Antworte IMMER auf Deutsch. Keine Ausnahmen."""
 
 

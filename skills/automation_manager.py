@@ -18,8 +18,9 @@ class AutomationManagerSkill(BaseSkill):
     @property
     def description(self) -> str:
         return (
-            "Verwaltet Automatisierungsregeln: erstellen, auflisten, aktivieren/deaktivieren, loeschen. "
-            "Automatisierungen reagieren auf Ereignisse (Webhooks, Scheduler, Heartbeat) und fuehren Aktionen aus."
+            "Verwaltet Claras INTERNE Automatisierungsregeln (EventBus/APScheduler): erstellen, auflisten, aktivieren/deaktivieren, loeschen. "
+            "NUR fuer interne Clara-Regeln — NICHT fuer n8n-Workflows. "
+            "Fuer n8n-Workflows: delegate_to_agent(agent='workflow_builder') nutzen."
         )
 
     @property

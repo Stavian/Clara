@@ -15,7 +15,11 @@ class BatchScriptSkill(BaseSkill):
 
     @property
     def description(self) -> str:
-        return "Erstellt und fuehrt Batch-Skripte aus (Sequenzen von Skill-Aufrufen als wiederverwendbare Workflows)."
+        return (
+            "Erstellt und fuehrt interne Batch-Skripte aus (Sequenzen von Clara-Skill-Aufrufen). "
+            "NUR fuer interne Skript-Ablaeufe — NICHT fuer n8n-Workflows. "
+            "Fuer n8n-Workflows: delegate_to_agent(agent='workflow_builder') nutzen."
+        )
 
     @property
     def parameters(self) -> dict:

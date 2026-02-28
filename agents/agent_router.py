@@ -50,9 +50,13 @@ class AgentRouter:
             "function": {
                 "name": "delegate_to_agent",
                 "description": (
-                    "Delegiere eine Aufgabe an einen spezialisierten Agenten. "
-                    "Nutze dies NUR wenn die Aufgabe klar von einem Spezialisten profitiert. "
-                    "Einfache Fragen beantwortest du selbst direkt.\n"
+                    "Delegiere eine Aufgabe an einen spezialisierten Agenten.\n"
+                    "PFLICHT — rufe dieses Tool ZUERST auf (vor allen anderen Tools) wenn:\n"
+                    "- Nutzer einen Workflow, eine Automatisierung oder ein n8n-Tool erstellen moechte"
+                    " → agent='workflow_builder'\n"
+                    "- Nutzer Code schreiben oder debuggen moechte → agent='coding'\n"
+                    "- Nutzer Recherche oder Web-Suche benoetigt → agent='research'\n"
+                    "Niemals batch_script, automation_manager oder system_command fuer Workflow-Erstellung nutzen.\n"
                     f"Verfuegbare Agenten:\n{agent_descriptions}"
                 ),
                 "parameters": {

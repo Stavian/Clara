@@ -23,6 +23,7 @@ system_prompt: >-
   Das Ergebnis ist das Workflow-JSON. Bereinige es falls noetig (entferne ```json``` Bloecke).
 
   WICHTIG bei system_command:
+  - Nutze IMMER timeout: 120 (Claude braucht bis zu 60 Sekunden)
   - Nutze immer: command = "claude --print \"...\""
   - Halte den Prompt auf Englisch (Claude versteht n8n besser auf Englisch)
   - Falls claude nicht gefunden: "claude not found — bitte 'npm install -g @anthropic-ai/claude-code' auf der Clara-VM ausfuehren"

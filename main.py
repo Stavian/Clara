@@ -63,6 +63,8 @@ from skills.pdf_reader import PDFReaderSkill
 from skills.calculator import CalculatorSkill
 from skills.calendar_manager import CalendarManagerSkill
 from skills.n8n_skill import N8nSkill
+from skills.n8n_dynamic import load_n8n_dynamic_skills
+from web.internal_routes import internal_router, init_internal_routes
 from memory.project_store import ProjectStore
 from scheduler.engine import SchedulerEngine
 from scheduler.heartbeat import Heartbeat
@@ -237,6 +239,18 @@ async def lifespan(app: FastAPI):
         except Exception as _e:
             logging.warning(f"n8n startup fetch failed (non-fatal): {_e}")
 
+    # Load n8n dynamic skills from YAML sidecars (first-class LLM tools)
+    if Config.N8N_ENABLED:
+        Config.N8N_TOOLS_DIR.mkdir(parents=True, exist_ok=True)
+        _dyn_count = 0
+        for _dyn_skill in load_n8n_dynamic_skills(Config.N8N_TOOLS_DIR):
+            if not skills.get(_dyn_skill.name):
+                skills.register(_dyn_skill)
+                _dyn_count += 1
+        if _dyn_count:
+            logging.info(f"n8n dynamic skills loaded: {_dyn_count}")
+    init_internal_routes(skills)
+
     # Initialize Phase 11 engines (need skills registry)
     script_engine = ScriptEngine(skills)
     await script_engine.initialize()
@@ -356,6 +370,7 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.include_router(router)
 app.include_router(webhook_router)
+app.include_router(internal_router)
 app.mount("/generated/audio", StaticFiles(directory=str(Config.GENERATED_AUDIO_DIR)), name="generated_audio")
 app.mount("/generated", StaticFiles(directory=str(Config.GENERATED_IMAGES_DIR)), name="generated")
 app.mount("/uploads", StaticFiles(directory=str(Config.UPLOAD_DIR)), name="uploads")

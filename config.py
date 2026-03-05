@@ -64,6 +64,15 @@ class Config:
         "http://192.168.178.130:5678/webhook-test/n8n_create_clara_tool",
     )
 
+    # n8n dynamic skills (first-class LLM tools loaded from YAML sidecars)
+    N8N_TOOLS_DIR: Path = Path(os.getenv("N8N_TOOLS_DIR", str(BASE_DIR / "data" / "n8n_tools")))
+    # Internal API for n8n to call back to Clara's server-local skills
+    INTERNAL_API_KEY: str = os.getenv("INTERNAL_API_KEY", "")
+    INTERNAL_API_ALLOWED_IPS: list[str] = os.getenv(
+        "INTERNAL_API_ALLOWED_IPS", "192.168.178.130,127.0.0.1,::1"
+    ).split(",")
+    CLARA_INTERNAL_URL: str = os.getenv("CLARA_INTERNAL_URL", "http://127.0.0.1:8080")
+
     # Google Calendar (optional)
     GOOGLE_CREDENTIALS_PATH: Path = BASE_DIR / "data" / "credentials.json"
     GOOGLE_TOKEN_PATH: Path = BASE_DIR / "data" / "google_token.json"

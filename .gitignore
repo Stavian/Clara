@@ -9,3 +9,4 @@ __pycache__/
 venv/
 .claude/
 CLAUDE.md
+.mcp.json

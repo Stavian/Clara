@@ -44,6 +44,7 @@ class N8nSkill(BaseSkill):
                         "create",
                         "create_tool",
                         "run_tool",
+                        "register_schema",
                         "activate",
                         "deactivate",
                         "delete",
@@ -56,6 +57,7 @@ class N8nSkill(BaseSkill):
                         "create=neuen Workflow erstellen (workflow_json erforderlich), "
                         "create_tool=neuen Workflow aus Beschreibung erstellen und als Clara-Tool taggen (description erforderlich), "
                         "run_tool=Clara-Tool per Name ausfuehren (workflow_name erforderlich, input_data optional), "
+                        "register_schema=neues n8n-Tool in Clara registrieren ohne Neustart (tool_name, workflow_name, webhook_path, description, parameters erforderlich), "
                         "activate/deactivate=Workflow ein-/ausschalten (workflow_id), "
                         "delete=Workflow loeschen (workflow_id), "
                         "execute=Workflow manuell ausfuehren (workflow_id), "
@@ -106,6 +108,33 @@ class N8nSkill(BaseSkill):
                         "Beispiel: '{\"message\": \"Hallo\", \"channel\": \"general\"}'."
                     ),
                 },
+                "tool_name": {
+                    "type": "string",
+                    "description": (
+                        "Snake_case Bezeichner fuer das neue Tool (fuer register_schema). "
+                        "Wird der Skill-Name in Clara. Beispiel: 'wetter_check'."
+                    ),
+                },
+                "webhook_path": {
+                    "type": "string",
+                    "description": (
+                        "Webhook-Pfad des n8n-Workflows (fuer register_schema). "
+                        "Beispiel: 'clara-wetter-check'."
+                    ),
+                },
+                "timeout": {
+                    "type": "integer",
+                    "description": (
+                        "Timeout in Sekunden fuer register_schema (Standard: 30)."
+                    ),
+                },
+                "parameters": {
+                    "type": "string",
+                    "description": (
+                        "JSON-Schema als JSON-String fuer register_schema. "
+                        "Beschreibt die Parameter des neuen Tools."
+                    ),
+                },
             },
             "required": ["action"],
         }
@@ -120,6 +149,10 @@ class N8nSkill(BaseSkill):
         requirements: str = "",
         workflow_name: str = "",
         input_data: str = "",
+        tool_name: str = "",
+        webhook_path: str = "",
+        timeout: int = 30,
+        parameters: str = "",
         **kwargs,
     ) -> str:
         # Workflow creation is only allowed through the workflow_builder agent
@@ -139,6 +172,11 @@ class N8nSkill(BaseSkill):
         # create_tool uses its own session (webhook, no API key header needed)
         if action == "create_tool":
             return await self._create_tool(description, requirements)
+
+        if action == "register_schema":
+            return await self._register_schema(
+                tool_name, workflow_name, webhook_path, description, timeout, parameters
+            )
 
         try:
             timeout = aiohttp.ClientTimeout(total=30)
@@ -249,6 +287,63 @@ class N8nSkill(BaseSkill):
             f"  oder direkt: {wf_url}\n"
             f"Nach dem Aktivieren ist der Workflow als Clara-Tool verfuegbar: action=run_tool, workflow_name='{wf_name}'"
         )
+
+    async def _register_schema(
+        self,
+        tool_name: str,
+        workflow_name: str,
+        webhook_path: str,
+        description: str,
+        timeout: int,
+        parameters_json: str,
+    ) -> str:
+        """Register a new n8n tool in Clara's SkillRegistry via the internal API."""
+        import json as _json
+        from config import Config as _Config
+
+        missing = [f for f, v in [
+            ("tool_name", tool_name), ("workflow_name", workflow_name),
+            ("webhook_path", webhook_path), ("description", description),
+            ("parameters", parameters_json),
+        ] if not str(v).strip()]
+        if missing:
+            return f"Fehler: Fehlende Felder fuer register_schema: {', '.join(missing)}"
+
+        try:
+            params = _json.loads(parameters_json) if isinstance(parameters_json, str) else parameters_json
+        except _json.JSONDecodeError as e:
+            return f"Fehler: 'parameters' ist kein gueltiges JSON — {e}"
+
+        payload = {
+            "tool_name": tool_name.strip(),
+            "workflow_name": workflow_name.strip(),
+            "webhook_path": webhook_path.strip(),
+            "description": description.strip(),
+            "timeout": int(timeout) if timeout else 30,
+            "parameters": params,
+        }
+
+        internal_url = f"{_Config.CLARA_INTERNAL_URL.rstrip('/')}/internal/n8n_tool_schema"
+        headers = {}
+        if _Config.INTERNAL_API_KEY:
+            headers["X-Clara-Internal-Key"] = _Config.INTERNAL_API_KEY
+
+        try:
+            req_timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=req_timeout) as session:
+                async with session.post(internal_url, json=payload, headers=headers) as resp:
+                    body = await resp.text()
+                    if not resp.ok:
+                        return f"Fehler beim Registrieren des Tools ({resp.status}): {body[:300]}"
+                    return (
+                        f"Tool **{tool_name}** erfolgreich registriert. "
+                        f"Es steht ab sofort als Clara-Skill zur Verfuegung (kein Neustart noetig)."
+                    )
+        except aiohttp.ClientConnectorError:
+            return "Fehler: Konnte Clara's interne API nicht erreichen. Laeuft Clara?"
+        except Exception as e:
+            logger.exception("register_schema failed")
+            return f"Fehler bei register_schema: {e}"
 
     async def _get_or_create_clara_tag(self, session: aiohttp.ClientSession) -> str | None:
         """Ensure a 'clara' tag exists in n8n and return its ID."""

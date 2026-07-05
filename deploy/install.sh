@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# Clara AI Assistant — Proxmox VM Installation Script
+# Clara AI Assistant — Proxmox VM Installation Script (Node)
 # Tested on Ubuntu 22.04 LTS
 # Run as root: sudo bash install.sh
 # =============================================================
@@ -13,27 +13,36 @@ STORAGE_ROOT="/mnt/storage/clara"
 SD_DIR="/mnt/storage/stable-diffusion-webui-forge"
 OLLAMA_MODELS_DIR="/mnt/storage/ollama"
 SERVICE_FILE="/etc/systemd/system/clara.service"
+NODE_MAJOR=22
 
-echo "=== Clara Installer ==="
+echo "=== Clara Installer (Node) ==="
 
 # --- 1. System dependencies ---
 echo "[1/11] Installing system dependencies..."
 apt-get update -q
 apt-get install -y -q \
-    python3 python3-pip python3-venv \
+    ca-certificates gnupg \
     sqlite3 \
     git \
     curl \
-    xclip xdotool \
+    build-essential python3 \
     ffmpeg \
     openssh-server
 
-# --- 2. Create system user ---
-echo "[2/11] Creating system user '$CLARA_USER'..."
+# --- 2. Node.js (NodeSource) ---
+echo "[2/11] Installing Node.js ${NODE_MAJOR}.x..."
+if ! command -v node >/dev/null || [ "$(node -v | cut -c2-3)" -lt "$NODE_MAJOR" ]; then
+    curl -fsSL "https://deb.nodesource.com/setup_${NODE_MAJOR}.x" | bash -
+    apt-get install -y -q nodejs
+fi
+node -v && npm -v
+
+# --- 3. Create system user ---
+echo "[3/11] Creating system user '$CLARA_USER'..."
 id "$CLARA_USER" &>/dev/null || useradd --system --shell /bin/false --home "$CLARA_DIR" "$CLARA_USER"
 
-# --- 3. Storage directories on HDD ---
-echo "[3/11] Creating storage directories at $STORAGE_ROOT..."
+# --- 4. Storage directories on HDD ---
+echo "[4/11] Creating storage directories at $STORAGE_ROOT..."
 mkdir -p \
     "$STORAGE_ROOT/images" \
     "$STORAGE_ROOT/audio" \
@@ -42,8 +51,8 @@ mkdir -p \
     "$STORAGE_ROOT/backups"
 chown -R "$CLARA_USER:$CLARA_USER" "$STORAGE_ROOT"
 
-# --- 4. Clone or update repo ---
-echo "[4/11] Setting up Clara at $CLARA_DIR..."
+# --- 5. Clone or update repo ---
+echo "[5/11] Setting up Clara at $CLARA_DIR..."
 if [ -d "$CLARA_DIR/.git" ]; then
     echo "  Repository exists — pulling latest changes..."
     git -C "$CLARA_DIR" pull
@@ -52,14 +61,14 @@ else
     git clone https://github.com/Stavian/Clara.git "$CLARA_DIR"
 fi
 
-# --- 5. Python virtual environment ---
-echo "[5/11] Creating Python virtual environment..."
-python3 -m venv "$CLARA_DIR/venv"
-"$CLARA_DIR/venv/bin/pip" install --upgrade pip -q
-"$CLARA_DIR/venv/bin/pip" install -r "$CLARA_DIR/requirements.txt" -q
+# --- 6. Node dependencies + build ---
+echo "[6/11] Installing dependencies and building..."
+cd "$CLARA_DIR"
+npm ci
+npm run build
 
-# --- 6. Environment file ---
-echo "[6/11] Checking .env file..."
+# --- 7. Environment file ---
+echo "[7/11] Checking .env file..."
 if [ ! -f "$CLARA_DIR/.env" ]; then
     cp "$CLARA_DIR/.env.example" "$CLARA_DIR/.env"
     echo ""
@@ -69,14 +78,14 @@ if [ ! -f "$CLARA_DIR/.env" ]; then
     echo "    - Set HOST=0.0.0.0"
     echo "    - Set WEB_PASSWORD"
     echo "    - Generate and set JWT_SECRET:"
-    echo "      python3 -c \"import secrets; print(secrets.token_hex(32))\""
+    echo "      node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""
     echo ""
 fi
 chown "$CLARA_USER:$CLARA_USER" "$CLARA_DIR/.env"
 chmod 600 "$CLARA_DIR/.env"
 
-# --- 7. Systemd service ---
-echo "[7/11] Installing systemd service..."
+# --- 8. Systemd service ---
+echo "[8/11] Installing systemd service..."
 cp "$CLARA_DIR/deploy/clara.service" "$SERVICE_FILE"
 chmod 644 "$SERVICE_FILE"
 chown -R "$CLARA_USER:$CLARA_USER" "$CLARA_DIR"
@@ -84,8 +93,8 @@ systemctl daemon-reload
 systemctl enable clara
 echo "  Service installed and enabled for auto-start."
 
-# --- 8. Backup cron job ---
-echo "[8/11] Installing daily backup cron job..."
+# --- 9. Backup cron job ---
+echo "[9/11] Installing daily backup cron job..."
 CRON_LINE="0 3 * * * $CLARA_DIR/deploy/backup.sh >> $STORAGE_ROOT/logs/backup.log 2>&1"
 chmod +x "$CLARA_DIR/deploy/backup.sh"
 chmod +x "$CLARA_DIR/deploy/update.sh"
@@ -95,21 +104,21 @@ if ! echo "$EXISTING_CRON" | grep -qF "backup.sh"; then
 fi
 echo "  Backup cron job added (runs daily at 03:00)."
 
-# --- 9. Install Ollama + configure HDD model storage ---
-echo "[9/11] Installing Ollama..."
-curl -fsSL https://ollama.com/install.sh | sh
+# --- 10. Install Ollama + configure HDD model storage ---
+echo "[10/11] Installing Ollama..."
+if ! command -v ollama >/dev/null; then
+    curl -fsSL https://ollama.com/install.sh | sh
+fi
 
-# Store models on HDD to keep the SSD free
 mkdir -p "$OLLAMA_MODELS_DIR"
 mkdir -p /etc/systemd/system/ollama.service.d
-cat > /etc/systemd/system/ollama.service.d/storage.conf <<EOF
+cat > /etc/systemd/system/ollama.service.d/storage.conf <<CONF
 [Service]
 Environment="OLLAMA_MODELS=$OLLAMA_MODELS_DIR"
-EOF
+CONF
 systemctl daemon-reload
 systemctl restart ollama
 
-# Wait for Ollama to be ready
 echo "  Waiting for Ollama to start..."
 for i in $(seq 1 12); do
     sleep 5
@@ -120,40 +129,15 @@ for i in $(seq 1 12); do
     echo "  Still waiting ($((i*5))s)..."
 done
 
-echo "  Pulling models (this will take a while — ~10 GB download)..."
+echo "  Pulling models (this will take a while)..."
 ollama pull huihui_ai/qwen3-abliterated:14b
 ollama pull nomic-embed-text
 echo "  Ollama models ready."
 
-# --- 10. Install Stable Diffusion Forge on HDD ---
-echo "[10/11] Setting up Stable Diffusion Forge..."
-if nvidia-smi &>/dev/null; then
-    if [ ! -d "$SD_DIR" ]; then
-        echo "  Cloning SD Forge repository (this is large — ~3 GB)..."
-        git clone https://github.com/lllyasviel/stable-diffusion-webui-forge.git "$SD_DIR"
-    else
-        echo "  SD Forge already present at $SD_DIR."
-    fi
-    echo ""
-    echo "  *** SD Forge first-run setup required ***"
-    echo "  SD Forge installs its own Python venv on first launch."
-    echo "  Run this once to complete setup (takes 10-20 min):"
-    echo "    cd $SD_DIR && python3 launch.py --api --nowebui --exit"
-    echo "  Then place your model files in:"
-    echo "    $SD_DIR/models/Stable-diffusion/"
-    echo ""
-else
-    echo "  WARNING: nvidia-smi not found — skipping SD Forge setup."
-    echo "  Install NVIDIA drivers first: ubuntu-drivers install"
-    echo "  Then re-run this script to install SD Forge."
-fi
-
 # --- 11. SSH for VS Code Remote ---
-echo "[11/11] Configuring SSH for VS Code Remote access..."
+echo "[11/11] Configuring SSH..."
 systemctl enable ssh
 systemctl start ssh
-
-# Allow root login with SSH key (required for VS Code Remote)
 sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
 systemctl reload ssh
 
@@ -164,24 +148,7 @@ echo ""
 echo "VM IP address: $VM_IP"
 echo ""
 echo "NEXT STEPS:"
-echo ""
-echo "  1. Edit your .env:"
-echo "     nano $CLARA_DIR/.env"
-echo "     (Set HOST=0.0.0.0, WEB_PASSWORD, JWT_SECRET)"
-echo ""
-echo "  2. Start Clara:"
-echo "     systemctl start clara"
-echo "     journalctl -u clara -f"
-echo ""
-echo "  3. Access Clara from your main PC:"
-echo "     http://$VM_IP:8080"
-echo ""
-echo "  4. VS Code Remote SSH setup (on your Windows PC):"
-echo "     - Install the 'Remote - SSH' extension in VS Code"
-echo "     - Press F1 → 'Remote-SSH: Connect to Host'"
-echo "     - Enter: root@$VM_IP"
-echo "     - Open folder: $CLARA_DIR"
-echo ""
-echo "  5. Future code updates (after git push on your PC):"
-echo "     ssh root@$VM_IP 'bash $CLARA_DIR/deploy/update.sh'"
-echo "     or interactively: sudo $CLARA_DIR/deploy/update.sh"
+echo "  1. Edit .env:  nano $CLARA_DIR/.env  (HOST=0.0.0.0, WEB_PASSWORD, JWT_SECRET)"
+echo "  2. Start:      systemctl start clara && journalctl -u clara -f"
+echo "  3. Access:     http://$VM_IP:8080"
+echo "  4. Updates:    ssh root@$VM_IP 'bash $CLARA_DIR/deploy/update.sh'"

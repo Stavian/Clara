@@ -4,6 +4,7 @@ import { loadConfig, resolvedConfig } from '../config/config.js'
 import { initFileLogging, createLogger } from '../infra/logger.js'
 import { Database } from '../infra/db.js'
 import { OllamaClient } from '../llm/ollama.js'
+import type { LLMClient } from '../llm/client.js'
 import { createLLMClient } from '../llm/factory.js'
 import { ToolRegistry } from '../tools/registry.js'
 import { MemoryManager } from '../memory/manager.js'
@@ -34,7 +35,7 @@ const logger = createLogger('deps')
 export interface AppDeps {
   cfg: ReturnType<typeof resolvedConfig>
   db: Database
-  llm: OllamaClient
+  llm: LLMClient
   tools: ToolRegistry
   memory: MemoryManager
   eventBus: EventBus
@@ -60,15 +61,17 @@ export function createDefaultDeps(configPath?: string): AppDeps {
   // Database
   const db = new Database(cfg.dbPath)
 
-  // LLM
-  const llm = new OllamaClient({
+  // LLM — resolved via provider factory (ollama/, openai/, anthropic/ prefixes)
+  const llm = createLLMClient(cfg.defaultModel, cfg)
+
+  // Memory — embeddings always go through Ollama (separate client;
+  // failures degrade to zero vectors inside OllamaEmbeddingClient)
+  const embeddingLlm = new OllamaClient({
     baseUrl: cfg.ollamaBaseUrl,
-    model: cfg.defaultModel.replace(/^ollama\//, ''),
+    model: cfg.ollamaEmbeddingModel,
     embeddingModel: cfg.ollamaEmbeddingModel,
   })
-
-  // Memory
-  const embeddingClient = new OllamaEmbeddingClient(llm, 768)
+  const embeddingClient = new OllamaEmbeddingClient(embeddingLlm, 768)
   const memory = new MemoryManager(db, embeddingClient)
 
   // Event bus

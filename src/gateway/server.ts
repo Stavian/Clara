@@ -109,16 +109,16 @@ export async function startGateway(deps: GatewayDeps) {
     return { token: auth.createToken(), auth_enabled: true }
   })
 
-  // Health
+  // Health — checks the active LLM provider (ollama key kept for UI compat)
   app.get('/health', async () => {
-    const ollamaOk = await (llm as OllamaClient).isAvailable?.() ?? false
-    return { status: ollamaOk ? 'ok' : 'degraded', ollama: ollamaOk }
+    const llmOk = await llm.isAvailable()
+    return { status: llmOk ? 'ok' : 'degraded', llm: llmOk, provider: llm.providerId, ollama: llmOk }
   })
 
   app.get('/api/health', async (request, reply) => {
     if (!checkAuth(getBearerToken(request))) return reply.code(401).send({ error: 'Unauthorized' })
-    const ollamaOk = await (llm as OllamaClient).isAvailable?.() ?? false
-    return { status: ollamaOk ? 'ok' : 'degraded', ollama: ollamaOk }
+    const llmOk = await llm.isAvailable()
+    return { status: llmOk ? 'ok' : 'degraded', llm: llmOk, provider: llm.providerId, ollama: llmOk }
   })
 
   // Agents list
@@ -175,9 +175,9 @@ export async function startGateway(deps: GatewayDeps) {
 
   app.get('/api/dashboard/status', async (request, reply) => {
     if (!checkAuth(getBearerToken(request))) return reply.code(401).send({ error: 'Unauthorized' })
-    const ollamaOk = await (llm as OllamaClient).isAvailable?.() ?? false
+    const llmOk = await llm.isAvailable()
     return {
-      ollama: ollamaOk,
+      ollama: llmOk,
       stable_diffusion: false,
       discord: Boolean(cfg.discordToken),
       model: cfg.defaultModel,

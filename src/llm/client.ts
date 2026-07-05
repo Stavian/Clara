@@ -53,6 +53,12 @@ export function stripThink(text: string): string {
   text = text.replace(_THINK_RE, '')
   text = text.replace(_TOOL_CALL_RE, '')
 
+  // ChatML token leakage (e.g. NemoMix via KoboldCpp): cut at the first
+  // <|im_end|> and drop any remaining <|...|> special tokens
+  const imEndIdx = text.indexOf('<|im_end|>')
+  if (imEndIdx !== -1) text = text.slice(0, imEndIdx)
+  text = text.replace(/<\|[a-z_]+\|>/gi, '')
+
   // Handle unclosed <think>: drop everything from <think> onward
   const openIdx = text.toLowerCase().lastIndexOf('<think>')
   if (openIdx !== -1) text = text.slice(0, openIdx)

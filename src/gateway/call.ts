@@ -168,6 +168,8 @@ export async function handleAgentCall(opts: {
 
     for await (const token of llm.stream(messages)) {
       rawText += token
+      // Stop at leaked ChatML end-of-turn token (e.g. NemoMix/KoboldCpp)
+      if (rawText.includes('<|im_end|>')) break
       if (!streamingStarted) {
         if (rawText.toLowerCase().includes('<think>') && !rawText.toLowerCase().includes('</think>')) continue
         streamingStarted = true

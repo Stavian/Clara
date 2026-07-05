@@ -2,143 +2,140 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Running the Project
+## Development Commands
 
 ```bash
-pip install -r requirements.txt
-python main.py  # Starts on http://127.0.0.1:8080
+npm install
+npm run dev:gw                            # Start gateway: http://127.0.0.1:8080
+node_modules/.bin/tsx src/entry.ts gateway run   # Equivalent
+node_modules/.bin/tsc --noEmit           # Type check only
+npm run lint                             # oxlint src/
+npm test                                 # vitest run
 ```
 
-Requires Ollama running at `http://localhost:11434`. Stable Diffusion Forge is optional — set `SD_ENABLED=true` in `.env` to activate it. No test suite — verify changes by running the app.
+### CLI commands
+```bash
+npx tsx src/entry.ts agent list
+npx tsx src/entry.ts config get
+npx tsx src/entry.ts memory search "..."
+npx tsx src/entry.ts gateway run
+```
 
-### Key env vars (copy `.env.example` → `.env`)
+### Config & env
+- Config file: `~/.clara/config.json5` (JSON5 + TypeBox schema)
+- Key env vars: `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `PORT`, `HOST`, `WEB_PASSWORD`, `JWT_SECRET`
+- Env vars override config file values
 
-| Var | Default | Notes |
-|-----|---------|-------|
-| `HOST` | `0.0.0.0` | Set `127.0.0.1` to restrict to localhost |
-| `OLLAMA_MODEL` | `huihui_ai/qwen3-abliterated:14b` | Main chat model |
-| `WEB_PASSWORD` | *(unset = auth disabled)* | bcrypt-hashed at startup |
-| `JWT_SECRET` | *(ephemeral if unset)* | Must be set for persistent sessions |
-| `SD_ENABLED` | `false` | Set `true` to enable image generation via SD Forge |
-| `GENERATED_IMAGES_DIR` | `data/generated_images` | Can point to HDD |
-| `GENERATED_AUDIO_DIR` | `data/generated_audio` | Can point to HDD |
-| `LOG_DIR` | `data/logs` | Can point to HDD |
-| `DB_PATH` | `data/clara.db` | Keep on SSD |
+## Architecture
+
+Clara is a locally-hosted AI assistant (TypeScript v2, "OpenClaw architecture"). The gateway runs on Fastify with a WebSocket chat endpoint; all LLM interaction goes through a stateless tool-loop function.
+
+### Startup & DI
+
+`src/entry.ts` → Commander.js → `src/cli/run-main.ts` registers commands → `src/cli/deps.ts` `createDefaultDeps()` constructs and wires all services in one place:
+
+```
+Config → Database → LLM → EmbeddingClient → Memory
+      ↘ EventBus → Tools → Scheduler → AutomationEngine
+      ↘ AgentRouter
+      ↘ → startGateway(deps)
+```
+
+There is no IoC container — all wiring is explicit in `createDefaultDeps()`.
+
+### Core request flow
+
+```
+WebSocket message
+  → gateway/server.ts  (auth, parse, load image)
+  → gateway/call.ts    handleAgentCall()
+      → build messages (system prompt + memory context + history)
+      → LLM tool loop (max agentScope.maxRounds rounds)
+          → parallel tool calls via Promise.allSettled()
+          → sequential agent delegations via AgentRouter
+      → stream or send final response
+      → fire-and-forget: extractFacts(), TTS
+```
+
+### Key modules
+
+| Path | Role |
+|------|------|
+| `src/gateway/call.ts` | `handleAgentCall()` — the entire LLM tool loop |
+| `src/gateway/server.ts` | Fastify setup, all HTTP + WebSocket routes |
+| `src/llm/client.ts` | `LLMClient` interface, `stripThink()`, `parseModelRef()` |
+| `src/llm/factory.ts` | Creates correct client from `provider/model` string |
+| `src/agents/agent-scope.ts` | `resolveAgentScope()` — YAML + config merge |
+| `src/agents/router.ts` | `AgentRouter` — sub-agent delegation |
+| `src/tools/registry.ts` | `ToolRegistry` — register, list, execute tools |
+| `src/memory/manager.ts` | `MemoryManager` — sqlite-vec vector + FTS5 keyword search |
+| `src/channels/types.ts` | `ChannelAdapter` interface |
+| `src/infra/db.ts` | `Database` wrapper (better-sqlite3, WAL mode) |
+| `src/automation/event-bus.ts` | In-process pub/sub `EventBus` |
+
+### Agent scope resolution
+
+`resolveAgentScope(agentId, cfg)` merges three layers (later overrides earlier):
+1. Defaults (from `cfg.agentDefaults`)
+2. YAML template — `data/agent_templates/custom/<id>.yaml` overrides `_builtin/<id>.yaml`
+3. JSON5 config entry (`cfg.agentList`)
+
+Result: `AgentScope` with `systemPrompt`, `skills` (null = all), `model`, `maxRounds`, `contextWindow`.
+
+### LLM model refs
+
+Format: `provider/model` — e.g. `ollama/qwen3:14b`, `openai/gpt-4o`, `anthropic/claude-opus-4-6`.
+If no `/` is present, provider defaults to `ollama`. Parsed by `parseModelRef()` in `src/llm/client.ts`.
+
+### Tool system
+
+Tools implement `{ name, description, parameters, execute(args, ctx) }`. Registered in `createDefaultDeps()`. The registry generates OpenAI function-calling definitions from the schema. `allowedSkills: null` means all tools are permitted; an array restricts to named tools.
+
+Builtin tools (14): `web_browse`, `web_fetch`, `file_manager`, `system_command`, `memory_manager`, `calculator`, `project_manager`, `task_scheduler`, `screenshot`, `clipboard`, `image_generation`, `webhook_manager`, `automation_manager`, `batch_script`.
+
+## Critical Patterns
+
+### Think-block stripping
+`stripThink()` in `src/llm/client.ts` — single source of truth. Strips `<think>...</think>`, `<tool_call>...</tool_call>`, handles unclosed tags, and drops lines containing only non-Latin characters (CJK filler from Qwen models). Every response path must call this before sending to the client.
+
+### Image deduplication
+When a tool result contains `![alt](/generated/...)`, `_executeTool()` in `gateway/call.ts` sends a separate WebSocket `image` event and replaces the markdown with `[Bild wurde angezeigt]`. This prevents the LLM from echoing the URL in its summary.
+
+### Streaming flow
+After all tool rounds complete, if `response.content` is empty, the LLM is asked to summarize tool results. The response is streamed token-by-token, buffering until `</think>` is seen before forwarding tokens to the client.
+
+### Fire-and-forget tasks
+Fact extraction and TTS are launched with `_fireAndForget()` — they do not block the response and failures are logged at debug level only.
+
+### WebSocket protocol (client → server)
+```json
+{ "message": "...", "tts": false, "image": "/uploads/uuid.png", "agent": "coding" }
+```
+Server event types sent to client: `message`, `stream`, `stream_end`, `tool_call`, `image`, `audio`, `error`.
+
+## Conventions
+
+- All assistant responses must be in German (default system prompt in `agent-scope.ts` enforces this)
+- Image generation prompts must be in English; SD Forge adds European ethnicity hints by default
+- System prompts use ASCII-safe German (`ae`/`oe`/`ue` instead of umlauts) — they live in TS strings
+- `data/` is git-ignored (DB, generated images, logs, scripts, agent templates runtime data)
+- `deploy/` contains Proxmox/Ubuntu systemd service, `install.sh`, `update.sh`, `backup.sh`
+- Deploy scripts run as root: `sudo bash /opt/clara/deploy/update.sh`
 
 ## Production Deployment
 
 Clara runs on a Proxmox VM (Ubuntu 22.04) at `/opt/clara` as the `clara` system user, managed by systemd.
 
 ```bash
-# First-time install on a fresh Ubuntu VM
-sudo bash /opt/clara/deploy/install.sh
-
-# Deploy after git push from dev PC
-/opt/clara/deploy/update.sh
-# or remotely:
+sudo bash /opt/clara/deploy/install.sh   # First-time install
+/opt/clara/deploy/update.sh              # Deploy after git push
 ssh root@<VM_IP> '/opt/clara/deploy/update.sh'
-
-# Logs
 journalctl -u clara -f
 ```
 
-## Architecture
+## Python Legacy
 
-Clara is a locally-hosted AI assistant with a web UI and Discord bot. Everything runs async on FastAPI + WebSocket + discord.py.
-
-**Core flow:** User message → Channel (WebSocket / Discord) → `ChatEngine` → LLM tool loop (max 5 rounds) → parallel tool execution → response back via `ChannelAdapter`.
-
-### Key Components
-
-- **`main.py`** — FastAPI app entry point, skill registration, lifespan management, Discord bot startup, rotating file logging setup
-- **`chat/engine.py`** — Channel-agnostic `ChatEngine`: LLM tool loop, streaming, DB save, fact extraction, TTS. Single source of truth for `_strip_think()`
-- **`chat/adapters.py`** — `ChannelAdapter` ABC + `WebSocketAdapter`
-- **`discord_bot/adapter.py`** — `DiscordAdapter`: implements `ChannelAdapter` for Discord; buffers stream tokens, splits messages at 2000 chars, sends images/audio as file attachments
-- **`web/routes.py`** — WebSocket handler, system prompt (`SYSTEM_PROMPT`), HTTP routes, auth dependency `_require_auth`. Public `/health` endpoint (no auth). Protected `/api/health`
-- **`config.py`** — All config via env vars. Paths (`LOG_DIR`, `GENERATED_IMAGES_DIR`, etc.) are env-overridable for HDD routing. JWT secret generated ephemerally if not set (logs a warning)
-- **`discord_bot/bot.py`** — `ClaraDiscordBot`: @mentions in servers, all DMs. Owner ID gates full skill access
-- **`llm/ollama_client.py`** — Ollama API wrapper; persistent `aiohttp.ClientSession` shared across all calls
-- **`agents/agent_router.py`** — Specialist agent delegation; imports `_strip_think` from `chat.engine`
-- **`agents/template_loader.py`** — `AgentTemplate` dataclass + `TemplateLoader` for YAML configs in `data/agent_templates/`
-- **`auth/security.py`** — JWT creation/verification, bcrypt password check, `auth_enabled()` helper
-- **`memory/database.py`** — aiosqlite wrapper. WAL mode + NORMAL sync enabled at init. Tables: `conversations`, `memory`, `projects`, `tasks`
-- **`memory/project_store.py`** — `ProjectStore`: CRUD for projects and tasks (used by `project_manager` skill); exposes task-count aggregation queries for the UI
-- **`services/tts_service.py`** — `generate_tts()`: strips markdown/code/URLs before synthesising speech via edge-tts; returns MP3 filename or None
-
-### Skill System
-
-Skills inherit from `BaseSkill` (`name`, `description`, `parameters`, `execute`). Registered in `SkillRegistry` at startup in `main.py`. Tool definitions are auto-generated in OpenAI function-calling format.
-
-Current skills: `file_manager`, `system_command`, `web_browse`, `web_fetch`, `project_manager`, `task_scheduler`, `image_generation`, `memory_manager`, `webhook_manager`, `automation_manager`, `batch_script`, `screenshot`, `clipboard`, `pdf_reader`, `calculator`, `calendar_manager`
-
-### Multi-Agent System
-
-Agents are YAML templates in `data/agent_templates/` (`_builtin/` for builtins, `custom/` for user overrides — same name wins). Built-in agents: `general`, `coding`, `research`, `image_prompt`. The main model gets a `delegate_to_agent` tool; specialists cannot delegate further. Non-owner Discord users can only delegate to agents whose skill sets are entirely within `DISCORD_PUBLIC_SKILLS`.
-
-### Phase 11 Subsystems (automation, webhooks, scripts)
-
-These three subsystems are wired together in `main.py` lifespan and share `EventBus`:
-
-- **`automation/automation_engine.py`** — Trigger-based automation rules stored in DB; executes skill chains when events fire on `EventBus`
-- **`automation/event_bus.py`** — In-process pub/sub; skills and the scheduler publish events, automation engine subscribes
-- **`webhook/manager.py`** + **`webhook/routes.py`** — Inbound webhooks stored in DB; fire events onto `EventBus` when called
-- **`scripts/script_engine.py`** — Executes named multi-step skill scripts stored in `data/scripts/`
-- **`notifications/notification_service.py`** — Sends notifications via Discord DM or WebSocket push; wired to `ChatEngine` and `DiscordBot`
-- **`scheduler/engine.py`** — APScheduler-based task runner; executes overdue tasks and skill calls on schedule
-- **`scheduler/heartbeat.py`** — Fires every `HEARTBEAT_INTERVAL_MINUTES`; checks overdue tasks and publishes heartbeat event
-
-### Frontend
-
-Vanilla HTML/CSS/JS in `web/static/`. WebSocket event types sent from server:
-- `message` — complete assistant response
-- `stream` / `stream_end` — token-by-token streaming
-- `tool_call` — triggers activity cards (spinners, icons, German labels via `TOOL_META` / `_AGENT_META` in `app.js`)
-- `image` — inline image display
-- `audio` — TTS playback
-- `error` — error display
-
-## Conventions
-
-- All assistant responses must be in German (system prompt enforces this)
-- Image generation prompts must be in English
-- Image generation adds European ethnicity hints to prompts and negative prompts by default
-- System prompts use ASCII-safe German (ae/oe/ue instead of umlauts) — they live in Python strings
-- `data/` is git-ignored (DB, generated images, logs, scripts, agent templates runtime data)
-- `deploy/` contains production deployment files for Proxmox/Ubuntu — `clara.service`, `backup.sh`, `install.sh`, `update.sh`
-- `CLAUDE.md` tracks project status and upcoming phases — consult before starting new features
-- Deploy scripts must be run as root: `sudo bash /opt/clara/deploy/update.sh` (not as `marlon` user)
-
-## Critical Patterns
-
-### Think-block stripping
-Qwen models emit `<think>...</think>` blocks and CJK filler lines. Single source of truth: `_strip_think()` in `chat/engine.py` (imported by `agent_router.py`). Any new response path must call it before sending to the frontend.
-1. Strips `<think>...</think>` via regex
-2. Removes unclosed `<think>` tags
-3. Drops lines containing only non-Latin characters
-
-### Image deduplication
-When a tool returns `![alt](/generated/...)`, the image is sent as a separate `image` WebSocket event and the markdown is replaced with `[Bild wurde angezeigt]` in the tool result. Prevents the LLM from repeating the image URL in its summary. Implemented in `ChatEngine._execute_tool()` and `agent_router.py`.
-
-### Streaming with think-block buffering
-`ChatEngine` buffers tokens until `</think>` is seen, then streams cleaned text. Discord adapter buffers all stream tokens and sends a single message on `stream_end`.
-
-### Async I/O
-All blocking operations use `run_in_executor()`. `OllamaClient` and `ImageGenerationSkill` hold persistent `aiohttp` sessions — never create per-request sessions. Multiple tool calls in one LLM round run via `asyncio.gather()`. TTS and fact extraction are fire-and-forget `asyncio.create_task()`.
-
-### Discord permission system
-- `DISCORD_OWNER_ID` gets `allowed_skills=None` (full access)
-- Other users get `Config.DISCORD_PUBLIC_SKILLS` only (`web_browse`, `web_fetch`, `image_generation`)
-- Tool execution validates `allowed_skills` even if the LLM hallucinates a blocked tool call
-- Session IDs: `discord-channel-{id}` for servers, `discord-dm-{id}` for DMs
-
-### Memory system
-- **`memory/context_builder.py`** — Injects recent memories into system prompt before each LLM call
-- **`memory/fact_extractor.py`** — Fire-and-forget background task; LLM extracts user facts and stores via `db.remember()`
-- **`skills/memory_manager.py`** — Explicit memory CRUD skill
-- Categories: `vorlieben`, `persoenlich`, `technik`, `ziele`, `projekte`, `gewohnheiten`, `wichtig`
-
-### Logging
-`_setup_logging()` in `main.py` runs at import time (before other project imports). Writes to both console and a rotating file at `Config.LOG_DIR / "clara.log"` (10 MB × 7 files). Unhandled exceptions are caught by `sys.excepthook` and written to the log as CRITICAL.
+The original Python implementation (`main.py`, `chat/`, `skills/`, etc.) is kept for reference only. The active codebase is TypeScript under `src/`. Do not add features to the Python code.
 
 ---
 
@@ -175,42 +172,31 @@ All blocking operations use `run_in_executor()`. `OllamaClient` and `ImageGenera
 
 ### Phase 9 - Erweiterte Memory-Systeme
 
-**Prioritat:** Sofort nutzlich
-
-- [x] Automatische Extraktion von Fakten uber den Nutzer (memory/fact_extractor.py)
-- [x] Session-Zusammenfassung und Kontext-Priorisierung (memory/context_builder.py)
-- [x] Memory-Management Skill (skills/memory_manager.py)
-- [ ] Vektor-basierte semantische Memory-Suche (Embeddings statt Keyword-Match)
-- [ ] Memory-Export/Import (Backup & Restore als JSON/Markdown)
-- [ ] Hybrid-Suche: Kombination aus Vektor-Semantik und BM25-Keyword-Matching
+- [x] Automatische Extraktion von Fakten uber den Nutzer (memory/manager.ts extractFacts)
+- [x] Memory-Management Tool (tools/builtin/memory-manager.ts)
+- [ ] Vektor-basierte semantische Memory-Suche (sqlite-vec installiert, noch nicht aktiviert)
+- [ ] Hybrid-Suche: Vektor-Semantik + FTS5 Keyword
+- [ ] Memory-Export/Import (JSON/Markdown)
 - [ ] Temporal Decay: Neuere Erinnerungen hoeher gewichten
-- [ ] Embedding-Cache: Re-Embedding unveraenderter Texte vermeiden
+- [ ] Embedding-Cache
 
 ---
 
 ### Phase 10 - Multi-Channel Messaging
 
-**Prioritat:** Sofort nutzlich
-
-- [ ] Telegram-Integration (aiogram)
-- [x] Discord-Integration (discord_bot/, ChannelAdapter-Abstraktion)
-- [x] Einheitliches Session-Management (ChatEngine + ChannelAdapter)
-- [x] Berechtigungssystem: Owner vs. oeffentliche Skills
-- [x] Proaktive Benachrichtigungen (notifications/notification_service.py)
-- [ ] Cross-Channel Messaging: Clara kann proaktiv ueber jeden Kanal senden
+- [ ] Telegram-Integration
+- [x] Discord-Struktur vorbereitet (ChannelAdapter-Interface)
+- [ ] Discord-Bot wiederverbinden (war im Python-Stack)
+- [ ] Cross-Channel Messaging
 
 ---
 
 ### Phase 11 - Automatisierung & Skripte
 
-**Prioritat:** Produktivitat
-
-- [x] Cron-Jobs (TaskSchedulerSkill + SchedulerEngine)
-- [x] Heartbeat-Checks
-- [x] Webhook-Empfanger (webhook/)
-- [x] Automatische Aktionen basierend auf Ereignissen (automation/ mit EventBus)
-- [x] Batch-Skript-Ausfuhrung (scripts/script_engine.py)
-- [x] Proaktive Benachrichtigungen (notifications/)
+- [x] Cron-Jobs (SchedulerEngine + TaskSchedulerTool)
+- [x] Webhook-Empfanger (/api/webhooks/:name)
+- [x] Automatische Aktionen basierend auf Ereignissen (AutomationEngine + EventBus)
+- [x] Batch-Skript-Ausfuhrung (BatchScriptTool)
 - [ ] System-Events: Heartbeat-Trigger, Startup/Shutdown, Error-Events
 - [ ] Event-Hooks: Benutzerdefinierte Aktionen bei Tool-Aufrufen
 
@@ -218,248 +204,92 @@ All blocking operations use `run_in_executor()`. `OllamaClient` and `ImageGenera
 
 ### Phase 12 - Erweiterte Skills & Tools
 
-**Prioritat:** Produktivitat
-
-- [x] Screenshot-Skill (ScreenshotSkill)
-- [x] Clipboard-Skill (ClipboardSkill)
-- [x] PDF-Dokumenten-Verarbeitung (PDFReaderSkill)
-- [x] Rechnerfunktionen (CalculatorSkill)
-- [x] Kalender-Integration (CalendarManagerSkill mit Google Calendar API)
+- [x] Screenshot, Clipboard, Calculator, WebBrowse, WebFetch, FileManager, SystemCommand
+- [x] ProjectManager, TaskScheduler, MemoryManager, WebhookManager, AutomationManager, BatchScript
+- [ ] ImageGeneration (nur aktiv wenn `SD_ENABLED=true`)
 - [ ] E-Mail-Integration (IMAP/SMTP)
 - [ ] Bild-Analyse mit Vision-Modell
-- [ ] Prozess-Manager: Hintergrund-Prozesse starten/ueberwachen/stoppen
+- [ ] Prozess-Manager
 
 ---
 
 ### Phase 13 - Agent-System
 
-**Prioritat:** Power-Feature
-
-- [x] Personas/Agenten (general, coding, research, image_prompt)
-- [x] Agent-Templates (YAML-basiert, data/agent_templates/)
-- [x] Sub-Agenten (AgentRouter mit delegate_to_agent Tool)
+- [x] AgentScope-Aufloesung (YAML + config merge)
+- [x] AgentRouter mit delegate_to_agent Tool
 - [ ] Per-Agent Tool-Profile
-- [ ] Workspace & Bootstrap-Dateien pro Agent (IDENTITY.md, SOUL.md, TOOLS.md, ...)
+- [ ] Workspace & Bootstrap-Dateien pro Agent (IDENTITY.md, SOUL.md, TOOLS.md)
 - [ ] Spezifizitaets-basiertes Agenten-Routing
 
 ---
 
 ### Phase 14 - Erweiterte UI
 
-**Prioritat:** Power-Feature
-
-- [x] Dashboard mit System-Status
-- [x] Projekt-Ubersicht und Aufgaben-Verwaltung
-- [x] Settings-Seite (Modell-Browser, Gedaechtnis, Agenten-Vorlagen)
-- [x] Datei-Upload mit Vorschau
-- [x] Dark Theme
-- [x] Mobile-Optimierung
+- [x] Bestehendes Web-UI aus Python-Stack (web/static/) unveraendert weitergenutzt
 - [ ] Slash-Commands (/help, /clear, /model, /agent)
-- [ ] Code-Highlighting in Chat-Nachrichten
+- [ ] Code-Highlighting
 - [ ] Session-Browser
 
 ---
 
 ### Phase 15 - Sicherheit & Stabilitat
 
-**Prioritat:** Qualitat
-
-- [x] Passwort-Schutz (JWT + bcrypt)
-- [x] Health-Check-Endpunkt (/api/health)
-- [x] Rate Limiting
-- [ ] Audit-Log (alle Tool-Aufrufe protokollieren)
-- [ ] Automatische Backups (Scheduled Task)
+- [x] JWT + bcrypt Auth (AuthService)
+- [x] Health-Check (/health public, /api/health protected)
+- [ ] Audit-Log
 - [ ] Hot-Reload: Konfigurationsaenderungen ohne Neustart
-- [ ] Clara Doctor: Selbstdiagnose mit Auto-Fix
+- [ ] Clara Doctor: Selbstdiagnose
 
 ---
 
 ### Phase 16 - Voice & Multimedia
 
-**Prioritat:** Qualitat
-
-- [x] Sprachausgabe TTS (edge-tts, de-DE-KatjaNeural)
-- [x] Bild-Upload zur Analyse
-- [ ] Spracheingabe STT (Whisper lokal oder Deepgram)
-- [ ] Wake Word "Hey Clara"
-- [ ] Audio-Transkription (Audio/Video-Dateien zu Text)
-
----
-
-### Phase 17 - Externe Integrationen
-
-**Prioritat:** Nice-to-have
-
-- [ ] Git-Integration (Repo-Status, Commits, Diffs)
-- [ ] RSS/News-Feed (abonnieren und zusammenfassen)
-- [ ] Smart Home Integration (Home Assistant / MQTT)
-- [ ] Wetter-Skill
-- [ ] DNS/Netzwerk-Discovery
+- [ ] TTS (stub in call.ts _sendTTS vorhanden, edge-tts noch nicht eingebaut)
+- [ ] STT (Whisper)
+- [ ] Bild-Upload zur Analyse (Upload-Endpunkt und base64-Uebergabe vorhanden)
 
 ---
 
 ### Phase 18 - Multi-Provider LLM
 
-**Prioritat:** Produktivitat
-
-- [ ] OpenAI-Provider (GPT-4o via API)
-- [ ] Anthropic-Provider (Claude via API)
-- [ ] Lokale Provider (Ollama als Basis beibehalten)
-- [ ] Provider-Format: `provider/model` Syntax (z.B. `openai/gpt-4o`)
+- [x] LLMClient-Interface + Factory (parseModelRef, createLLMClient)
+- [x] Ollama, OpenAI, Anthropic Implementierungen vorhanden
+- [ ] Per-Agent Model-Override vollstaendig verdrahtet
 - [ ] Model-Fallback-Ketten
-- [ ] Per-Agent Model-Override
 
 ---
 
 ### Phase 19 - Gateway & API-Server
 
-**Prioritat:** Power-Feature
-
 - [ ] OpenAI-kompatibler API-Endpunkt
-- [ ] WebSocket Control-Plane (strukturiertes Protokoll)
-- [ ] Health-Metriken-API (CPU, RAM, GPU, Modell-Status)
-- [ ] Multi-Client-Support: Mehrere UIs gleichzeitig verbunden
-- [ ] Event-Streaming: Clients koennen Events abonnieren
+- [ ] Health-Metriken-API (CPU, RAM, GPU)
+- [ ] Event-Streaming fuer externe Clients
 
 ---
 
 ### Phase 20 - Browser-Automatisierung
 
-**Prioritat:** Produktivitat
-
-- [ ] Playwright-Integration als Browser-Skill
-- [ ] Navigation, Seiten-Snapshot, Screenshot
-- [ ] Elemente klicken, Formulare ausfuellen
-- [ ] Browser-Profile: Persistente Sessions mit Cookies/Login
-- [ ] JavaScript ausfuehren auf der Seite
-
----
-
-### Phase 21 - Session-Management
-
-**Prioritat:** Power-Feature
-
-- [ ] Session-Liste und History
-- [ ] Session-Spawn: Neue parallele Agent-Sessions starten
-- [ ] Session-Export: Konversation als Markdown/JSON
-- [ ] Session-Fork: Ab einem Punkt duplizieren und fortsetzen
-- [ ] Taeglich/Idle-Reset-Fenster (konfigurierbares Reset-Zeitfenster)
-
----
-
-### Phase 22 - Node & Device-Steuerung
-
-**Prioritat:** Nice-to-have
-
-- [ ] Node-Discovery: Gepaarte Geraete im Netzwerk finden
-- [ ] Node-Befehle: Shell-Commands auf Remote-Nodes
-- [ ] Android/iOS Companion-App (oder Termux Bridge)
-- [ ] Kamera/Screen-Capture von Remote-Geraeten
+- [ ] Playwright-Integration als Browser-Tool
 
 ---
 
 ### Phase 23 - CLI & Diagnostik
 
-**Prioritat:** Qualitat
-
-- [ ] `clara status` — System-Health anzeigen
-- [ ] `clara doctor` — Diagnose mit Auto-Fix (Ollama, DB, Config)
-- [ ] `clara message` — Nachricht ueber beliebigen Kanal senden
-- [ ] `clara logs` — Gateway-Logs anzeigen
-- [ ] `clara models list/set` — Modelle verwalten
-
----
-
-### Phase 24 - Canvas & Dynamic UI
-
-**Prioritat:** Nice-to-have
-
-- [ ] Canvas-System: Agent erstellt HTML/CSS/JS-Panels dynamisch
-- [ ] Interaktive Dashboards und Diagramme
-- [ ] Formular-Generierung fuer strukturierte Dateneingabe
-- [ ] Canvas-Persistenz: erstellte Panels speichern
+- [ ] `clara status` / `clara doctor` / `clara logs` / `clara models list`
 
 ---
 
 ### Phase 25 - Claude Code Integration
 
-**Prioritat:** Power-Feature
-
-- [ ] Claude Code als Subprocess starten und steuern
-- [ ] CodingSkill: Clara delegiert Coding-Auftraege an Claude Code
-- [ ] Streaming-Output in Echtzeit an Clara-UI weiterleiten
-- [ ] Auto-Commit nach Aenderungen mit sinnvoller Message
-- [ ] PR-Erstellung via gh CLI
-
----
-
-### Phase 26 - Kontext-Management & Kompaktierung
-
-**Prioritat:** Power-Feature
-
-- [ ] /compact Befehl: Manuelle Kontext-Zusammenfassung
-- [ ] Auto-Kompaktierung wenn Kontext ans Token-Limit stoesst
-- [ ] /context list: Injizierte Dateien und Token-Groessen anzeigen
-- [ ] Tool-Output-Groessenbeschraenkung (Anfang + Ende behalten)
-
----
-
-### Phase 27 - Workspace & Bootstrap-System
-
-**Prioritat:** Power-Feature
-
-- [ ] Standardisierte Workspace-Dateien pro Agent: IDENTITY.md, SOUL.md, TOOLS.md, MEMORY.md
-- [ ] BOOT.md: Optionale Startup-Checkliste
-- [ ] BOOTSTRAP.md: Einmaliges Ersteinrichtungs-Ritual (wird nach Ausfuehrung entfernt)
-- [ ] WorkspaceLoader: injiziert Markdown-Dateien in System-Prompts zur Laufzeit
-- [ ] TOOLS.md wird bei jedem Start aus live Skill-Registry regeneriert
-- [ ] Workspace als Git-Repo: Backup und Machine-Migration per git clone
-
----
-
-### Phase 28 - Streaming-Optimierung
-
-**Prioritat:** Qualitat
-
-- [ ] EmbeddedBlockChunker mit konfigurierbaren Break-Hierarchien
-- [ ] Code-Fence-Schutz: Kein Stream-Split innerhalb von Code-Bloecken
-- [ ] Human-like Pacing: Randomisierte Pausen zwischen Block-Antworten
-- [ ] Pro-Kanal Streaming-Steuerung (blockStreaming, chunkMode, etc.)
-
----
-
-### Phase 29 - OAuth & Multi-Account-Auth
-
-**Prioritat:** Produktivitat
-
-- [ ] OAuth fuer LLM-Provider (PKCE-Flow)
-- [ ] Automatisches Token-Refresh mit Ablauf-Tracking
-- [ ] Multi-Account: Isolierte Agenten oder Profile-basiertes Routing
-- [ ] Per-Session Modell-Override via /model @profileId
-
----
-
-### Phase 30 - Plugin & Hook-System
-
-**Prioritat:** Nice-to-have
-
-- [ ] Plugin-Hooks: before_model_resolve, before_prompt_build, before_tool_call, after_tool_call
-- [ ] Session-Grenz-Hooks: on_session_start, on_session_end, on_compaction
-- [ ] Command-Lifecycle-Interception: Eigene Slash-Commands als Plugins
-- [ ] Plugin-Marketplace (clawhub-Aequivalent)
+- [ ] CodingTool: Clara delegiert Coding-Auftraege an Claude Code subprocess
 
 ---
 
 ### Empfehlungen fur die Umsetzung
 
-**Prioritaeten fuer Sofort-Nutzen:**
-1. **Phase 18** — Multi-Provider (GPT-4o, Claude fuer komplexe Aufgaben)
-2. **Phase 20** — Browser-Automatisierung (Web-Interaktion)
-3. **Phase 10** — Telegram (Mobile Erreichbarkeit)
-4. **Phase 15** — Sicherheit (Hot-Reload, Doctor)
-5. **Phase 23** — CLI (Schnellzugriff ohne Browser)
-
-**Modularer Aufbau fuer neue Phasen:**
-- `providers/` — Provider-ABC + Implementierungen pro LLM-Anbieter
-- `cli/` — Typer-basiertes CLI-Framework
-- `browser/` — Playwright-Wrapper + BrowserSkill
+**Prioritaeten:**
+1. **Phase 18** — Multi-Provider vollstaendig verdrahten (Factory + per-Agent model override)
+2. **Phase 9** — sqlite-vec Vektor-Suche aktivieren (Infrastruktur bereits installiert)
+3. **Phase 20** — Browser-Automatisierung (Playwright)
+4. **Phase 10** — Discord-Bot im TS-Stack neu implementieren
+5. **Phase 23** — CLI-Diagnose-Befehle

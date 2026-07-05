@@ -9,3 +9,6 @@ __pycache__/
 venv/
 .claude/
 .mcp.json
+node_modules/
+dist/
+*.tsbuildinfo

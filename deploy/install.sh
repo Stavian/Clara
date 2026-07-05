@@ -104,7 +104,10 @@ if ! echo "$EXISTING_CRON" | grep -qF "backup.sh"; then
 fi
 echo "  Backup cron job added (runs daily at 03:00)."
 
-# --- 10. Install Ollama + configure HDD model storage ---
+# --- 10. Install Ollama (skipped when it runs on a separate VM) ---
+# Set INSTALL_OLLAMA=true to install Ollama locally.
+# Default: skip — production Ollama runs on its own VM (see OLLAMA_BASE_URL in .env).
+if [ "${INSTALL_OLLAMA:-false}" = "true" ]; then
 echo "[10/11] Installing Ollama..."
 if ! command -v ollama >/dev/null; then
     curl -fsSL https://ollama.com/install.sh | sh
@@ -133,6 +136,9 @@ echo "  Pulling models (this will take a while)..."
 ollama pull huihui_ai/qwen3-abliterated:14b
 ollama pull nomic-embed-text
 echo "  Ollama models ready."
+else
+echo "[10/11] Skipping local Ollama install (INSTALL_OLLAMA != true)."
+fi
 
 # --- 11. SSH for VS Code Remote ---
 echo "[11/11] Configuring SSH..."
